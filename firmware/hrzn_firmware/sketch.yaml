@@ -1,0 +1,13 @@
+default_fqbn: esp32:esp32:esp32s3
+default_profile: hrzn_s3
+
+profiles:
+  hrzn_s3:
+    fqbn: esp32:esp32:esp32s3
+    platforms:
+      - platform: esp32:esp32
+    libraries:
+      - LovyanGFX
+      - ArduinoJson
+      - WebSockets
+      - ESP32Servo

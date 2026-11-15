@@ -1,0 +1,46 @@
+# Credentials & Secrets (NEVER commit actual Wi-Fi or host credentials)
+firmware/hrzn_firmware/secrets.h
+**/secrets.h
+.env
+.env.*
+!.env.example
+
+# Arduino / ESP32-S3 Build Artifacts
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.eep
+*.partitions.bin
+*.bootloader.bin
+
+# Python (Server / Tooling)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node.js / Companion Web UI
+node_modules/
+dist/
+.next/
+.vite/
+npm-debug.log*
+pnpm-debug.log*
+
+# Docker / Runtime Data
+data/*.db
+data/*.sqlite
+data/*.json
+
+# OS & Editor Artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
