@@ -18,7 +18,7 @@ const config = reactive<HrznConfig>({
   target_angle_pct: 100,
   mirror_vertical: true,
   frame_format: 'RGB565',
-  target_fps: 2.0,
+  target_fps: 2.5,
   hud_title: 'STANCE // HRZN-01',
   hud_subtitle: 'OPTICAL HUD LINK',
 })
@@ -28,8 +28,8 @@ const device = reactive<DeviceStatus>({
   device_id: null,
   hw_version: 'HRZN-01',
   fw_version: null,
-  display_width: 320,
-  display_height: 240,
+  display_width: 480,
+  display_height: 320,
   uptime_s: 0,
   rssi_dbm: null,
   free_heap: null,
@@ -280,7 +280,7 @@ onBeforeUnmount(() => {
                 Live HUD Preview
               </h2>
               <p class="text-xs text-slate-400">
-                {{ showMirroredPreview ? 'Vertically mirrored TFT output' : 'Un-mirrored combiner view (320×240)' }}
+                {{ showMirroredPreview ? 'Vertically mirrored TFT output' : 'Un-mirrored combiner view (480×320)' }}
               </p>
             </div>
             <button
@@ -296,7 +296,7 @@ onBeforeUnmount(() => {
             <img
               :src="previewDataUrl"
               alt="HRZN-01 Live HUD Preview"
-              class="mx-auto aspect-[4/3] w-full max-w-[360px] rounded object-contain transition-transform duration-200"
+              class="mx-auto aspect-[3/2] w-full max-w-[380px] rounded object-contain transition-transform duration-200"
               :class="showMirroredPreview ? '-scale-y-100' : ''"
             />
           </div>

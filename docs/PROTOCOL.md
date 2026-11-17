@@ -15,7 +15,7 @@ HRZN-01 (ESP32-S3)                       STANCE-HRZN-LINK (FastAPI)
        |                                             |
        |--- WS Connect (/ws/device) ---------------->|
        |                                             |
-       |--- JSON: device_hello --------------------->|  (HRZN-01, 320x240, capabilities)
+       |--- JSON: device_hello --------------------->|  (HRZN-01, 480x320, capabilities)
        |<-- JSON: config_sync -----------------------|  (Saved servo limits, brightness, flap state)
        |                                             |
        |<== BIN: Frame Packet (RGB565 / JPEG) =======|  (Pre-mirrored HUD frames)
@@ -35,8 +35,8 @@ Sent immediately upon WebSocket connection establishment. Identifies `HRZN-01`, 
   "hw_version": "HRZN-01",
   "fw_version": "0.1.0-alpha",
   "display": {
-    "width": 320,
-    "height": 240,
+    "width": 480,
+    "height": 320,
     "formats": ["RGB565", "JPEG"],
     "needs_vertical_mirror": true
   },
@@ -177,22 +177,26 @@ Each binary WebSocket message consists of a **14-byte little-endian packed heade
 | :--- | :--- | :--- | :--- | :--- |
 | `0` | 2 | `magic` | `uint8[2]` | Fixed magic bytes `0x48, 0x5A` (`"HZ"`) |
 | `2` | 1 | `version` | `uint8` | Packet header version (`0x01`) |
-| `3` | 1 | `format` | `uint8` | `0x01` = Big-Endian `RGB565`, `0x02` = `JPEG` |
-| `4` | 1 | `flags` | `uint8` | Bitmask (`0x01` = partial region, `0x02` = pre-mirrored vertically) |
-| `5` | 1 | `seq` | `uint8` | Rolling sequence number (`0..255`) |
-| `6` | 2 | `x` | `uint16` LE | Destination X coordinate (`0` for full frame) |
-| `8` | 2 | `y` | `uint16` LE | Destination Y coordinate (`0` for full frame) |
-| `10` | 2 | `w` | `uint16` LE | Region width in pixels (`320` for full frame) |
-| `12` | 2 | `h` | `uint16` LE | Region height in pixels (`240` for full frame) |
+| `3` | 1 | `format` | `uint8` | `0x01` = `RGB565` (`<u2` / `setSwapBytes(true)`), `0x02` = `JPEG` |
+| `4` | 1 | `flags` | `uint8` | Bitmask (`0x01` = partial strip/region, `0x02` = pre-mirrored vertically) |
+| `5` | 1 | `seq` | `uint8` | Rolling sequence number (`0..255`; shared across strips of one logical frame) |
+| `6` | 2 | `x` | `uint16` LE | Destination X coordinate (`0` for horizontal strips / full frame) |
+| `8` | 2 | `y` | `uint16` LE | Destination Y coordinate (`0` for full frame, or strip Y offset) |
+| `10` | 2 | `w` | `uint16` LE | Region width in pixels (`480` for horizontal strips / full frame) |
+| `12` | 2 | `h` | `uint16` LE | Region height in pixels (`10` for RGB565 strips, `80` for JPEG strips, `320` for full frame) |
 | `14` | `N` | `payload` | `uint8[]` | Encoded pixel data |
 
-### 3.3 Payload Formats
+### 3.3 Strip Chunking & Payload Formats
 
-1. **Big-Endian RGB565 (`format = 0x01`)**
-   - Payload length MUST equal `w * h * 2` bytes (`153,600` bytes for `320x240`).
-   - Encoded as big-endian `RGB565` (`>u2`) in SPI wire byte order, matching `LovyanGFX` `setSwapBytes(false)` + `pushImage`.
+Because `Links2004/WebSockets` enforces a `15,360`-byte (`15 KB`) maximum single binary message size (`WEBSOCKETS_MAX_DATA_SIZE`), each `480x320` logical frame is sliced into horizontal strip packets so every WebSocket binary message stays strictly below `15,360` bytes:
+
+1. **RGB565 (`format = 0x01`, Default)**
+   - Encoded as little-endian `RGB565` (`<u2`), matching `LovyanGFX` `setSwapBytes(true)` + `pushImage` on ESP32-S3.
+   - Sliced into `480x10` horizontal strips (`9,614` bytes per packet including the 14-byte header; `32` strips for a full frame).
+   - Server maintains a **differential dirty-strip cache** and transmits only horizontal strips whose pixel bytes changed since the previous frame (with a full 32-strip refresh on initial connect or format/mirror changes).
 2. **JPEG (`format = 0x02`)**
-   - Standard baseline JPEG matching `(w, h)` dimensions, decoded via `LovyanGFX` `drawJpg`.
+   - Baseline 4:4:4 JPEG (`quality=95`, `subsampling=0`) matching `(w, h)` dimensions, decoded via `LovyanGFX` with `setSwapBytes(false)` + `drawJpg`.
+   - Sliced into `480x80` horizontal strips (`4` strips per frame, typically ~9–12.5 KB each).
 
 ---
 
@@ -203,5 +207,5 @@ Each binary WebSocket message consists of a **14-byte little-endian packed heade
 - **`POST /api/config`** — Updates & persists `HrznConfig`; pushes `set_servo_limits`, `set_brightness`, and/or `flap_move` to `HRZN-01` if connected.
 - **`POST /api/flap`** — Quick flap actuation (`state`: `"open" | "closed" | "custom"`, optional `position_pct`, optional `duration_ms`).
 - **`POST /api/brightness`** — Quick backlight update (`brightness`: `0..255`).
-- **`GET /api/preview.png`** — Returns the current **un-mirrored** `320x240` HUD frame as `image/png`.
+- **`GET /api/preview.png`** — Returns the current **un-mirrored** `480x320` HUD frame as `image/png`.
 - **`WS /ws/ui`** — Streams JSON `{ "type": "state_update", "config": ..., "device": ..., "preview_data_url": "data:image/png;base64,..." }` whenever frames or state update, and accepts `{ "type": "flap_move" | "set_brightness" | "update_config", ... }` commands from the UI.

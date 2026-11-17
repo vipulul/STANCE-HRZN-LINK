@@ -52,6 +52,7 @@ stance-hrzn-link/
 ├── firmware/
 │   └── hrzn_firmware/          # Standard Arduino sketch + arduino-cli profile
 │       ├── hrzn_firmware.ino
+│       ├── boot_animation.h
 │       ├── config.h
 │       ├── secrets.example.h
 │       └── sketch.yaml

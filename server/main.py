@@ -39,6 +39,7 @@ class LinkState:
         self.latest_preview_png: bytes = b""
         self.latest_preview_data_url: str = ""
         self._lock = asyncio.Lock()
+        self._ws_send_lock = asyncio.Lock()
         self.refresh_preview_cache()
 
     def refresh_preview_cache(self) -> None:
@@ -62,11 +63,15 @@ class LinkState:
         if ws is None:
             return False
         try:
-            await ws.send_text(json.dumps(message))
+            async with self._ws_send_lock:
+                if self.device_ws is not ws:
+                    return False
+                await ws.send_text(json.dumps(message))
             return True
         except Exception:
-            self.device_ws = None
-            self.device_status.connected = False
+            if self.device_ws is ws:
+                self.device_ws = None
+                self.device_status.connected = False
             return False
 
     async def broadcast_ui(self, include_preview: bool = True) -> None:
@@ -147,6 +152,12 @@ class LinkState:
                 }
             )
 
+        if (
+            updated.mirror_vertical != prev.mirror_vertical
+            or updated.frame_format != prev.frame_format
+        ):
+            self.renderer.reset_diff_state()
+
         await self.broadcast_ui()
         return self.build_ui_snapshot(include_preview=False)
 
@@ -166,18 +177,23 @@ async def frame_stream_loop() -> None:
 
             ws = state.device_ws
             if ws is not None:
-                packet = state.renderer.build_frame_packet(
+                packets = state.renderer.build_frame_packets(
                     unmirrored=unmirrored,
                     seq=state.frame_seq,
                     fmt=cfg.frame_format,
                     mirror_vertical=cfg.mirror_vertical,
                 )
-                state.frame_seq = (state.frame_seq + 1) & 0xFF
-                try:
-                    await ws.send_bytes(packet)
-                except Exception:
-                    state.device_ws = None
-                    state.device_status.connected = False
+                if packets:
+                    state.frame_seq = (state.frame_seq + 1) & 0xFF
+                    try:
+                        async with state._ws_send_lock:
+                            if state.device_ws is ws:
+                                for packet in packets:
+                                    await ws.send_bytes(packet)
+                    except Exception:
+                        if state.device_ws is ws:
+                            state.device_ws = None
+                            state.device_status.connected = False
 
             if state.ui_clients:
                 await state.broadcast_ui(include_preview=True)
@@ -258,11 +274,8 @@ async def device_websocket(websocket: WebSocket) -> None:
         if state.device_ws is not None:
             with suppress(Exception):
                 await state.device_ws.close()
-        state.device_ws = websocket
-        state.device_status.connected = True
-        state.device_status.last_seen = datetime.now(timezone.utc).isoformat()
-
-    await state.broadcast_ui()
+            state.device_ws = None
+            state.device_status.connected = False
 
     try:
         while True:
@@ -283,9 +296,14 @@ async def device_websocket(websocket: WebSocket) -> None:
                 state.device_status.display_width = int(disp.get("width", HUD_WIDTH))
                 state.device_status.display_height = int(disp.get("height", HUD_HEIGHT))
 
-                await websocket.send_text(
-                    json.dumps(state.store.config.to_config_sync_payload())
-                )
+                async with state._ws_send_lock:
+                    await websocket.send_text(
+                        json.dumps(state.store.config.to_config_sync_payload())
+                    )
+                state.renderer.reset_diff_state()
+                async with state._lock:
+                    state.device_ws = websocket
+                    state.device_status.connected = True
                 await state.broadcast_ui()
 
             elif msg_type == "telemetry_report":

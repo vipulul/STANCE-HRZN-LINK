@@ -14,10 +14,10 @@
 #define PROTOCOL_VERSION 1
 
 // ----------------------------------------------------------------------------
-// Display Geometry (Update to match your physical SPI TFT panel)
+// Display Geometry (IPS ILI9488 480x320 Landscape)
 // ----------------------------------------------------------------------------
-#define TFT_WIDTH   320
-#define TFT_HEIGHT  240
+#define TFT_WIDTH   480
+#define TFT_HEIGHT  320
 
 // ----------------------------------------------------------------------------
 // Placeholder GPIO Pinouts (HRZN-01 — ESP32-S3 DevKit)
@@ -27,7 +27,7 @@
 #define TFT_SCLK   12
 #define TFT_CS     10
 #define TFT_DC     9
-#define TFT_RST    14
+#define TFT_RST    8
 #define TFT_BL     13
 
 #define SERVO_PIN  4
@@ -42,12 +42,13 @@
 #define SERVO_DEFAULT_SWEEP_MS  800
 #define SERVO_SETTLE_DETACH_MS  250
 
-#define TFT_DEFAULT_BRIGHTNESS  200   // 0..255 PWM duty cycle
+#define TFT_DEFAULT_BRIGHTNESS  255   // 0..255 PWM duty cycle (255 = steady 100% on boot)
 
 // ----------------------------------------------------------------------------
 // Non-blocking Timing Intervals
 // ----------------------------------------------------------------------------
-#define WIFI_RECONNECT_INTERVAL_MS  5000
+#define WIFI_RECONNECT_INTERVAL_MS  15000
 #define WS_RECONNECT_INTERVAL_MS    3000
 #define TELEMETRY_INTERVAL_MS       5000
+#define SERIAL_DIAG_INTERVAL_MS     2000
 #define SERIAL_BAUD_RATE            115200

@@ -22,7 +22,7 @@ class HrznConfig(BaseModel):
     target_angle_pct: int = Field(default=100, ge=0, le=100)
     mirror_vertical: bool = True
     frame_format: Literal["RGB565", "JPEG"] = "RGB565"
-    target_fps: float = Field(default=2.0, ge=0.5, le=15.0)
+    target_fps: float = Field(default=2.5, ge=0.5, le=15.0)
     hud_title: str = Field(default="STANCE // HRZN-01", max_length=32)
     hud_subtitle: str = Field(default="OPTICAL HUD LINK", max_length=40)
 
@@ -88,8 +88,8 @@ class DeviceStatus(BaseModel):
     device_id: Optional[str] = None
     hw_version: str = "HRZN-01"
     fw_version: Optional[str] = None
-    display_width: int = 320
-    display_height: int = 240
+    display_width: int = 480
+    display_height: int = 320
     uptime_s: int = 0
     rssi_dbm: Optional[int] = None
     free_heap: Optional[int] = None
