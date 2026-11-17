@@ -26,6 +26,7 @@ from server.plugins import (
     get_plugin_manifests,
     get_plugin_provider,
     merge_plugin_configs,
+    mount_plugin_routers,
     reload_plugins,
     resolve_plugin_file,
 )
@@ -290,6 +291,27 @@ class LinkState:
         await self.broadcast_ui()
         return self.build_ui_snapshot(include_preview=False)
 
+    async def trigger_plugin_test_event(self, plugin_id: str) -> dict[str, Any]:
+        """Simulate an event trigger for `plugin_id` within Dynamic Mode's hold cooldown."""
+        provider = get_plugin_provider(plugin_id)
+        if provider is None:
+            raise HTTPException(status_code=404, detail=f"Unknown plugin: {plugin_id}")
+
+        current_cfg = self.store.config.plugin_configs.get(plugin_id, {})
+        if current_cfg.get("dynamicMode") == "off":
+            self.store.update_plugin_settings(plugin_id, {"dynamicMode": "on_event"})
+
+        self.layout_engine.trigger_test_event(plugin_id)
+        self.refresh_layout()
+        self.add_log(
+            "ui",
+            "test_event",
+            f"plugin={plugin_id} hold={self.store.config.dynamic_rules.event_hold_seconds}s",
+        )
+        await self.update_preview_frame()
+        await self.broadcast_ui()
+        return self.build_ui_snapshot(include_preview=False)
+
 
 state = LinkState()
 
@@ -348,6 +370,7 @@ app = FastAPI(
     description="STANCE Labs HRZN-01 modular HUD grid, layout engine, and WebSocket streamer.",
     lifespan=lifespan,
 )
+mount_plugin_routers(app)
 
 
 # ----------------------------------------------------------------------------
@@ -402,6 +425,11 @@ async def update_plugin_settings(
     if not isinstance(settings_patch, dict):
         raise HTTPException(status_code=422, detail="Settings payload must be a JSON object")
     return await state.apply_plugin_settings(plugin_id, settings_patch)
+
+
+@app.post("/api/plugins/{plugin_id}/test-event")
+async def test_plugin_event(plugin_id: str) -> dict[str, Any]:
+    return await state.trigger_plugin_test_event(plugin_id)
 
 
 @app.post("/api/config")
@@ -540,6 +568,10 @@ async def ui_websocket(websocket: WebSocket) -> None:
                 settings_patch = msg.get("settings")
                 if plugin_id and isinstance(settings_patch, dict):
                     await state.apply_plugin_settings(plugin_id, settings_patch)
+            elif msg_type == "trigger_plugin_event":
+                plugin_id = str(msg.get("plugin_id", ""))
+                if plugin_id:
+                    await state.trigger_plugin_test_event(plugin_id)
     except WebSocketDisconnect:
         pass
     finally:

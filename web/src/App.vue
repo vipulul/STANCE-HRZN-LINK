@@ -51,14 +51,14 @@ onBeforeUnmount(() => {
   <!-- Companion Web UI (/ & /settings) -->
   <div v-else class="min-h-screen bg-slate-950 text-slate-100">
     <header class="border-b border-slate-800/80 bg-slate-900/75 backdrop-blur">
-      <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-3.5">
-        <div class="flex items-center gap-6">
+      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2.5 px-3 py-3 sm:px-4">
+        <div class="flex flex-wrap items-center gap-3.5">
           <a
             href="/"
-            class="flex items-center gap-3"
+            class="flex items-center gap-2.5"
             @click.prevent="navigate('/')"
           >
-            <div class="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/10 font-mono text-sm font-bold text-cyan-300">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/10 font-mono text-sm font-bold text-cyan-300">
               HZ
             </div>
             <div>
@@ -77,10 +77,10 @@ onBeforeUnmount(() => {
           </a>
 
           <!-- Primary Navigation -->
-          <nav class="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/80 p-1 font-mono text-xs">
+          <nav class="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950/80 p-1 font-mono text-xs">
             <a
               href="/"
-              class="rounded-md px-3 py-1.5 font-semibold transition"
+              class="rounded-md px-2.5 py-1.5 font-semibold transition"
               :class="
                 !isSettingsRoute
                   ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/40'
@@ -92,7 +92,7 @@ onBeforeUnmount(() => {
             </a>
             <a
               href="/settings"
-              class="rounded-md px-3 py-1.5 font-semibold transition"
+              class="rounded-md px-2.5 py-1.5 font-semibold transition"
               :class="
                 isSettingsRoute
                   ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/40'
@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             :disabled="reloadingPlugins"
-            class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 font-mono text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+            class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1.5 font-mono text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
             title="Rescan ./plugins directory and hot-reload plugins"
             @click="triggerPluginReload"
           >
@@ -116,15 +116,16 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Connection & Action Status Badges -->
-        <div class="flex flex-wrap items-center gap-2.5 font-mono text-xs">
+        <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
           <span
             v-if="statusMessage"
-            class="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-cyan-200"
+            :title="statusMessage"
+            class="max-w-[260px] truncate rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1.5 text-cyan-200"
           >
             {{ statusMessage }}
           </span>
 
-          <div class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950 px-3 py-1.5">
+          <div class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950 px-2.5 py-1.5">
             <span
               class="h-2 w-2 rounded-full"
               :class="uiConnected ? 'bg-emerald-400' : 'bg-rose-500'"
@@ -132,7 +133,7 @@ onBeforeUnmount(() => {
             <span class="text-slate-300">UI {{ uiConnected ? 'LIVE' : 'OFFLINE' }}</span>
           </div>
 
-          <div class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950 px-3 py-1.5">
+          <div class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950 px-2.5 py-1.5">
             <span
               class="h-2 w-2 rounded-full"
               :class="device.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"

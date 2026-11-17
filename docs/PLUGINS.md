@@ -30,6 +30,7 @@ plugins/
   "description": "Short summary shown in HUD Studio.",
   "version": "1.0.0",
   "basePriority": 5,
+  "defaultDynamicMode": "on_event",
   "defaultSettings": {
     "accentColor": "#00f0ff",
     "compact": false
@@ -38,8 +39,9 @@ plugins/
 ```
 
 - `id`: Unique identifier matching the folder name and slot assignments.
-- `basePriority`: Used by Dynamic Mode when ranking active plugins (`clock` uses `1`).
-- `defaultSettings`: Seeded into `ConfigStore` (`data/config.json`) on startup and on `POST /api/plugins/reload`, and passed to both `Widget.vue` and `Settings.vue`.
+- `basePriority`: Default slot priority (`1–100`) used when seeding `userPriority` (`clock` defaults to `10`, `weather` to `8`, `telemetry` to `6`). Higher priority claims earlier slots (`Slot 0`, `Slot 1`, etc.).
+- `defaultDynamicMode`: Default Dynamic Mode behavior (`"always" | "on_event" | "off"`). Defaults to `"always"` for manifest-only plugins unless specified (`"on_event"` for `weather` and `telemetry`).
+- `defaultSettings`: Seeded into `ConfigStore` (`data/config.json`) along with universal `dynamicMode` and `userPriority` fields on startup and on `POST /api/plugins/reload`, and passed to both `Widget.vue` and `Settings.vue`.
 
 ---
 
@@ -87,7 +89,7 @@ Rendered inside the HUD Studio settings drawer. Accepts `modelValue` and emits `
 
 If your plugin only displays client-side UI, omit `provider.py`—the server automatically creates a `ManifestPluginProvider` from `plugin.json`.
 
-To fetch live server data or dynamically toggle `active` / `priority` for Dynamic Mode, add `plugins/<plugin_id>/provider.py` subclassing `HudPluginProvider`:
+To fetch live server data or report event triggers for Dynamic Mode, add `plugins/<plugin_id>/provider.py` subclassing `HudPluginProvider`. Providers do **not** need to compute `userPriority`, `active`, or hold cooldowns—simply report `event_triggered` and `data`, and `LayoutEngine` applies the centralized `dynamicMode` / `userPriority` / `event_hold_seconds` pipeline uniformly across all plugins:
 
 ```python
 from datetime import datetime
@@ -102,23 +104,51 @@ class MyPluginProvider(HudPluginProvider):
         settings: dict[str, Any],
         now: Optional[datetime] = None,
     ) -> PluginRuntimeStatus:
-        is_active = bool(settings.get("enabled", True))
+        alert_active = bool(settings.get("thresholdMet", False))
         return PluginRuntimeStatus(
             id=self.id,
             name=self.name,
-            active=is_active,
-            priority=self.base_priority if is_active else 0,
-            reason="Active telemetry condition met",
+            event_triggered=alert_active,
+            reason="Alert condition met" if alert_active else "Nominal",
             data={"value": 42},
         )
 ```
 
-Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_settings`) is automatically populated from `plugin.json` on startup and on `POST /api/plugins/reload`.
+Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_dynamic_mode`, `default_settings`) is automatically populated from `plugin.json` on startup and on `POST /api/plugins/reload`.
 
-### Dynamic Mode Priority & Layout Rules (`server/layout_engine.py`)
+### Custom Plugin API Routes (`get_router()`)
 
+If a plugin needs custom backend endpoints (e.g., for `Settings.vue` search/autocomplete or webhook actions) without modifying `server/main.py`, override `get_router(self) -> Optional[APIRouter]` on your `HudPluginProvider` subclass:
+
+```python
+from fastapi import APIRouter
+
+class MyPluginProvider(HudPluginProvider):
+    def get_router(self) -> APIRouter:
+        router = APIRouter()
+
+        @router.get("/ping")
+        async def ping():
+            return {"ok": True}
+
+        return router
+```
+
+Whenever plugins are loaded (at startup or via `POST /api/plugins/reload`), `server/plugins/registry.py` automatically mounts any returned `APIRouter` under `/api/plugins/<plugin_id>` with tag `plugin:<plugin_id>` (e.g., `/api/plugins/my-plugin/ping`).
+
+### Centralized Dynamic Mode, Priority & Cooldown Rules (`server/layout_engine.py`)
+
+Every plugin exposes two user-configurable fields (`dynamicMode` and `userPriority`), editable in HUD Studio's **Dynamic Mode & Priority** manager or in the plugin's **Settings** drawer:
+
+- `dynamicMode`:
+  - `"always"` — Always active in Dynamic Mode with effective priority `userPriority`.
+  - `"on_event"` — Active only while `provider.evaluate()` reports `event_triggered=True` **or** within `dynamic_rules.event_hold_seconds` (default `12s`) after `last_triggered_at` (including simulated triggers via `POST /api/plugins/<id>/test-event`).
+  - `"off"` — Never surfaced in Dynamic Mode.
+- `userPriority` (`1–100`) — Determines slot ordering when multiple plugins are active (higher priority claims earlier slots).
+
+Layout resolution order:
 1. **Time-of-Day Schedule:** When `night_mode_enabled` is true and the current hour falls inside `[night_start_hour, night_end_hour)`, Dynamic Mode forces `1x1` with `clock` and applies `night_style_preset`.
-2. **Active Plugin Count & Priority:** Active plugins are sorted by `priority` descending and mapped to a grid template:
+2. **Active Plugin Count & Priority:** Active plugins are sorted by `userPriority` descending and mapped to a grid template:
    - `0–1` active $\rightarrow$ `1x1`
    - `2` active $\rightarrow$ `2x1`
    - `3` active $\rightarrow$ `2-big-1-small`
@@ -126,10 +156,11 @@ Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_sett
 
 ---
 
-## 4. Runtime Endpoints & Reference Plugin (`plugins/clock/`)
+## 4. Runtime Endpoints & Reference Plugins (`plugins/clock/`, `weather/`, `telemetry/`)
 
-- `GET /api/plugins` — Lists discovered plugin manifests (`id`, `name`, `description`, `version`, `basePriority`, `defaultSettings`, `hasWidget`, `hasSettings`) and current layout evaluation.
+- `GET /api/plugins` — Lists discovered plugin manifests (`id`, `name`, `description`, `version`, `basePriority`, `defaultDynamicMode`, `defaultSettings`, `hasWidget`, `hasSettings`) and current layout evaluation.
 - `POST /api/plugins/reload` — Rescans `./plugins/`, imports new providers, seeds new `defaultSettings`, and notifies all connected UIs + Playwright.
+- `POST /api/plugins/<id>/test-event` — Simulates an `event_triggered` pulse for `<id>` so it holds open for `event_hold_seconds` in Dynamic Mode.
 - `GET /plugins-raw/<id>/<file>` — Serves raw `.vue`, `.ts`, `.js`, and `.json` files directly from `./plugins/<id>/` with `Cache-Control: no-store`.
 
-The built-in [`plugins/clock/`](../plugins/clock/plugin.json) package is the canonical reference plugin.
+The built-in [`plugins/clock/`](../plugins/clock/plugin.json) package is the canonical reference plugin (alongside [`plugins/weather/`](../plugins/weather/plugin.json) and [`plugins/telemetry/`](../plugins/telemetry/plugin.json)).

@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import HudGridCanvas from '../components/HudGridCanvas.vue'
 import { useHrznState } from '../composables/useHrznState'
 import { PLUGIN_LIST, getPluginById } from '../plugins/registry'
-import type { GridLayoutId } from '../types/hrzn'
+import type { GridLayoutId, PluginDynamicMode } from '../types/hrzn'
 
 const {
   config,
@@ -18,6 +18,8 @@ const {
   swapSlots,
   updateConfigPatch,
   updatePluginSettings,
+  updatePluginDynamicConfig,
+  triggerPluginTestEvent,
   triggerPluginReload,
 } = useHrznState()
 
@@ -65,25 +67,129 @@ const selectedSlotPlugin = computed(() => getPluginById(selectedSlotPluginId.val
 
 const activeSettingsPlugin = computed(() => getPluginById(settingsModalPluginId.value))
 
+function getPluginDynamicMode(pluginId: string): PluginDynamicMode {
+  const fromCfg = config.plugin_configs[pluginId]?.dynamicMode
+  if (fromCfg === 'always' || fromCfg === 'on_event' || fromCfg === 'off') {
+    return fromCfg
+  }
+  const fromStatus = layout.plugin_statuses.find((s) => s.id === pluginId)?.dynamic_mode
+  if (fromStatus === 'always' || fromStatus === 'on_event' || fromStatus === 'off') {
+    return fromStatus
+  }
+  const fromDefault = getPluginById(pluginId)?.defaultSettings?.dynamicMode
+  if (fromDefault === 'always' || fromDefault === 'on_event' || fromDefault === 'off') {
+    return fromDefault
+  }
+  return 'always'
+}
+
+function getPluginUserPriority(pluginId: string): number {
+  const raw =
+    config.plugin_configs[pluginId]?.userPriority ??
+    layout.plugin_statuses.find((s) => s.id === pluginId)?.user_priority ??
+    getPluginById(pluginId)?.defaultSettings?.userPriority ??
+    10
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return 10
+  return Math.max(1, Math.min(100, Math.round(parsed)))
+}
+
+const managedPlugins = computed(() => {
+  return [...PLUGIN_LIST.value]
+    .map((plugin) => {
+      const status = layout.plugin_statuses.find((s) => s.id === plugin.id)
+      const mode = getPluginDynamicMode(plugin.id)
+      const userPriority = getPluginUserPriority(plugin.id)
+      const slotIndex = config.layout_mode === 'dynamic' ? layout.slots.indexOf(plugin.id) : -1
+      return {
+        plugin,
+        status,
+        mode,
+        userPriority,
+        slotIndex,
+      }
+    })
+    .sort((a, b) => {
+      if (b.userPriority !== a.userPriority) return b.userPriority - a.userPriority
+      if (a.plugin.id === 'clock') return -1
+      if (b.plugin.id === 'clock') return 1
+      return a.plugin.id.localeCompare(b.plugin.id)
+    })
+})
+
+async function setPriorityDirect(pluginId: string, rawVal: string) {
+  const parsed = Number.parseInt(rawVal, 10)
+  if (Number.isNaN(parsed)) return
+  const clamped = Math.max(1, Math.min(100, parsed))
+  await updatePluginDynamicConfig(pluginId, { userPriority: clamped })
+}
+
+async function movePluginOrder(index: number, delta: -1 | 1) {
+  const list = managedPlugins.value
+  const targetIdx = index + delta
+  if (targetIdx < 0 || targetIdx >= list.length) return
+
+  const currentItem = list[index]
+  const neighborItem = list[targetIdx]
+  let nextCurrentPrio = neighborItem.userPriority
+  let nextNeighborPrio = currentItem.userPriority
+
+  if (nextCurrentPrio === nextNeighborPrio) {
+    if (delta === -1) {
+      if (neighborItem.userPriority < 100) {
+        nextCurrentPrio = neighborItem.userPriority + 1
+      } else {
+        nextNeighborPrio = 99
+      }
+    } else {
+      if (neighborItem.userPriority > 1) {
+        nextCurrentPrio = neighborItem.userPriority - 1
+      } else {
+        nextNeighborPrio = 2
+      }
+    }
+  }
+
+  await updateConfigPatch(
+    {
+      plugin_configs: {
+        [currentItem.plugin.id]: { userPriority: nextCurrentPrio },
+        [neighborItem.plugin.id]: { userPriority: nextNeighborPrio },
+      },
+    },
+    `Updated slot priority: ${currentItem.plugin.name} -> P${nextCurrentPrio}`,
+  )
+}
+
 function openPluginSettings(pluginId: string) {
   const plugin = getPluginById(pluginId)
   if (!plugin) return
   draftPluginSettings.value = {
     ...plugin.defaultSettings,
     ...(config.plugin_configs[pluginId] ?? {}),
+    dynamicMode: getPluginDynamicMode(pluginId),
+    userPriority: getPluginUserPriority(pluginId),
   }
   settingsModalPluginId.value = pluginId
 }
 
 async function applyDraftPluginSettings() {
   if (!settingsModalPluginId.value) return
-  const ok = await updatePluginSettings(settingsModalPluginId.value, draftPluginSettings.value)
+  const prio = Number(draftPluginSettings.value.userPriority ?? 10)
+  const payload = {
+    ...draftPluginSettings.value,
+    userPriority: Number.isFinite(prio) ? Math.max(1, Math.min(100, Math.round(prio))) : 10,
+  }
+  const ok = await updatePluginSettings(settingsModalPluginId.value, payload)
   if (ok) {
     settingsModalPluginId.value = null
   }
 }
 
 async function handleDynamicRuleChange() {
+  const holdVal = Number(config.dynamic_rules.event_hold_seconds ?? 12)
+  const clampedHold = Number.isFinite(holdVal) ? Math.max(1, Math.min(300, Math.round(holdVal))) : 12
+  config.dynamic_rules.event_hold_seconds = clampedHold
   await updateConfigPatch(
     {
       dynamic_rules: {
@@ -91,6 +197,7 @@ async function handleDynamicRuleChange() {
         night_start_hour: config.dynamic_rules.night_start_hour,
         night_end_hour: config.dynamic_rules.night_end_hour,
         night_style_preset: config.dynamic_rules.night_style_preset,
+        event_hold_seconds: clampedHold,
       },
     },
     'Dynamic mode rules updated',
@@ -182,61 +289,227 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
         </div>
       </div>
 
-      <!-- Collapsible Dynamic Schedule & Priority Rules Panel -->
+      <!-- Dynamic Mode & Priority Manager (auto-shown in Dynamic Mode, toggleable otherwise) -->
       <div
-        v-if="showDynamicRules"
-        class="mt-4 grid gap-4 border-t border-slate-800 pt-4 sm:grid-cols-2 lg:grid-cols-4"
+        v-if="config.layout_mode === 'dynamic' || showDynamicRules"
+        class="mt-4 space-y-4 border-t border-slate-800 pt-4"
       >
-        <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
-          <div>
-            <div class="font-mono text-xs font-semibold text-slate-200">Night Minimal Schedule</div>
-            <div class="text-[11px] text-slate-400">Force 1x1 clock overnight</div>
+        <!-- Global Dynamic Schedule & Cooldown Rules -->
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <label class="mb-1 flex items-center justify-between font-mono text-[11px] text-slate-400">
+              <span>Event Hold Cooldown</span>
+              <span class="text-cyan-300">{{ config.dynamic_rules.event_hold_seconds }}s</span>
+            </label>
+            <input
+              v-model.number="config.dynamic_rules.event_hold_seconds"
+              type="number"
+              min="1"
+              max="300"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+              @change="handleDynamicRuleChange"
+            />
           </div>
-          <input
-            v-model="config.dynamic_rules.night_mode_enabled"
-            type="checkbox"
-            class="h-4 w-4 accent-cyan-400"
-            @change="handleDynamicRuleChange"
-          />
-        </label>
 
-        <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-          <label class="mb-1 block font-mono text-[11px] text-slate-400">Night Start</label>
-          <select
-            v-model.number="config.dynamic_rules.night_start_hour"
-            class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-            @change="handleDynamicRuleChange"
-          >
-            <option v-for="opt in hourOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
+          <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+            <div>
+              <div class="font-mono text-xs font-semibold text-slate-200">Night Minimal</div>
+              <div class="text-[11px] text-slate-400">Force 1x1 clock overnight</div>
+            </div>
+            <input
+              v-model="config.dynamic_rules.night_mode_enabled"
+              type="checkbox"
+              class="h-4 w-4 accent-cyan-400"
+              @change="handleDynamicRuleChange"
+            />
+          </label>
+
+          <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <label class="mb-1 block font-mono text-[11px] text-slate-400">Night Start</label>
+            <select
+              v-model.number="config.dynamic_rules.night_start_hour"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+              @change="handleDynamicRuleChange"
+            >
+              <option v-for="opt in hourOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <label class="mb-1 block font-mono text-[11px] text-slate-400">Night End</label>
+            <select
+              v-model.number="config.dynamic_rules.night_end_hour"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+              @change="handleDynamicRuleChange"
+            >
+              <option v-for="opt in hourOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <label class="mb-1 block font-mono text-[11px] text-slate-400">Night Preset</label>
+            <select
+              v-model="config.dynamic_rules.night_style_preset"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+              @change="handleDynamicRuleChange"
+            >
+              <option value="minimal">minimal</option>
+              <option value="tactical">tactical</option>
+              <option value="segmented">segmented</option>
+            </select>
+          </div>
         </div>
 
-        <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-          <label class="mb-1 block font-mono text-[11px] text-slate-400">Night End</label>
-          <select
-            v-model.number="config.dynamic_rules.night_end_hour"
-            class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-            @change="handleDynamicRuleChange"
-          >
-            <option v-for="opt in hourOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
-        </div>
+        <!-- Per-Plugin Dynamic Mode & Priority Manager -->
+        <div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
+          <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <span class="font-mono text-xs font-semibold uppercase tracking-wider text-cyan-300">
+              Dynamic Mode &amp; Priority Order
+            </span>
+            <span class="font-mono text-[11px] text-slate-500">
+              Higher priority gets earlier slots (Slot 1 left/top &rarr; Slot 2 right/bottom)
+            </span>
+          </div>
 
-        <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-          <label class="mb-1 block font-mono text-[11px] text-slate-400">Night Preset Override</label>
-          <select
-            v-model="config.dynamic_rules.night_style_preset"
-            class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-            @change="handleDynamicRuleChange"
-          >
-            <option value="minimal">minimal</option>
-            <option value="tactical">tactical</option>
-            <option value="segmented">segmented</option>
-          </select>
+          <div class="space-y-2">
+            <div
+              v-for="(item, idx) in managedPlugins"
+              :key="item.plugin.id"
+              class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-800/90 bg-slate-900/70 px-3 py-2.5"
+            >
+              <!-- Left: Reorder Arrows + Priority Input + Plugin Info -->
+              <div class="flex min-w-[220px] flex-1 items-center gap-3">
+                <div class="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    :disabled="idx === 0 || saving"
+                    title="Move Higher Priority (Earlier Slot)"
+                    class="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-300 transition hover:border-cyan-500/60 hover:text-cyan-200 disabled:opacity-30"
+                    @click="movePluginOrder(idx, -1)"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="idx === managedPlugins.length - 1 || saving"
+                    title="Move Lower Priority (Later Slot)"
+                    class="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-300 transition hover:border-cyan-500/60 hover:text-cyan-200 disabled:opacity-30"
+                    @click="movePluginOrder(idx, 1)"
+                  >
+                    ▼
+                  </button>
+                </div>
+
+                <div class="w-16">
+                  <label class="block font-mono text-[9px] uppercase text-slate-500">Priority</label>
+                  <input
+                    :value="item.userPriority"
+                    type="number"
+                    min="1"
+                    max="100"
+                    class="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-xs font-semibold text-cyan-300 focus:border-cyan-500 focus:outline-none"
+                    @change="setPriorityDirect(item.plugin.id, ($event.target as HTMLInputElement).value)"
+                  />
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-mono text-xs font-semibold text-slate-100">
+                      {{ item.plugin.name }}
+                    </span>
+                    <span
+                      v-if="item.slotIndex >= 0"
+                      class="rounded border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-300"
+                    >
+                      SLOT {{ item.slotIndex + 1 }}
+                    </span>
+                    <span
+                      v-else-if="item.mode === 'off'"
+                      class="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
+                    >
+                      OFF
+                    </span>
+                    <span
+                      v-else-if="item.mode === 'on_event'"
+                      class="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-300"
+                    >
+                      STANDBY
+                    </span>
+
+                    <span
+                      v-if="item.status?.holding_event"
+                      class="rounded border border-cyan-500/40 bg-cyan-500/15 px-1.5 py-0.5 font-mono text-[10px] text-cyan-200"
+                    >
+                      HOLD {{ Math.ceil(item.status.hold_remaining_s ?? 0) }}s
+                    </span>
+                    <span
+                      v-else-if="item.status?.event_triggered"
+                      class="rounded border border-rose-500/40 bg-rose-500/15 px-1.5 py-0.5 font-mono text-[10px] text-rose-200"
+                    >
+                      EVENT FIRING
+                    </span>
+                  </div>
+                  <div class="truncate text-[11px] text-slate-400">
+                    {{ item.status?.reason ?? item.plugin.description }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Mode Segmented Control + Test Event + Configure -->
+              <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <div class="inline-flex rounded-md border border-slate-800 bg-slate-950 p-0.5 text-[11px]">
+                  <button
+                    v-for="m in [
+                      { id: 'always', label: 'Always' },
+                      { id: 'on_event', label: 'On Event' },
+                      { id: 'off', label: 'Off' },
+                    ]"
+                    :key="m.id"
+                    type="button"
+                    class="rounded px-2.5 py-1 font-semibold transition"
+                    :class="
+                      item.mode === m.id
+                        ? m.id === 'always'
+                          ? 'bg-emerald-500/20 text-emerald-200'
+                          : m.id === 'on_event'
+                            ? 'bg-amber-500/20 text-amber-200'
+                            : 'bg-slate-800 text-slate-300'
+                        : 'text-slate-500 hover:text-slate-300'
+                    "
+                    @click="
+                      updatePluginDynamicConfig(item.plugin.id, {
+                        dynamicMode: m.id as PluginDynamicMode,
+                      })
+                    "
+                  >
+                    {{ m.label }}
+                  </button>
+                </div>
+
+                <button
+                  v-if="item.mode === 'on_event'"
+                  type="button"
+                  :disabled="saving"
+                  class="rounded-md border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:opacity-50"
+                  @click="triggerPluginTestEvent(item.plugin.id)"
+                >
+                  Test Event
+                </button>
+
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 text-[11px] text-slate-300 transition hover:border-cyan-500/50 hover:text-cyan-200"
+                  @click="openPluginSettings(item.plugin.id)"
+                >
+                  Settings
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -538,12 +811,22 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
               class="flex items-start justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-3.5"
             >
               <div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                   <span class="font-mono text-xs font-semibold text-slate-100">{{ plugin.name }}</span>
-                  <span class="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-300">
-                    PRIORITY {{
-                      layout.plugin_statuses.find((s) => s.id === plugin.id)?.priority ?? 1
-                    }}
+                  <span class="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] text-cyan-300">
+                    P{{ getPluginUserPriority(plugin.id) }}
+                  </span>
+                  <span
+                    class="rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase"
+                    :class="
+                      getPluginDynamicMode(plugin.id) === 'always'
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                        : getPluginDynamicMode(plugin.id) === 'on_event'
+                          ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                          : 'border-slate-700 bg-slate-900 text-slate-500'
+                    "
+                  >
+                    {{ getPluginDynamicMode(plugin.id).replace('_', ' ') }}
                   </span>
                 </div>
                 <p class="mt-1 text-xs text-slate-400">{{ plugin.description }}</p>
@@ -597,15 +880,67 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
           </div>
         </div>
 
-        <!-- Plugin-Specific Settings Form -->
-        <div class="flex-1 overflow-y-auto pr-1">
+        <!-- Universal Dynamic Mode & Priority Controls + Plugin-Specific Settings -->
+        <div class="flex-1 space-y-5 overflow-y-auto pr-1">
+          <div class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/80 p-3.5">
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-cyan-300">
+                Dynamic Mode &amp; Priority
+              </span>
+              <button
+                v-if="draftPluginSettings.dynamicMode === 'on_event'"
+                type="button"
+                :disabled="saving"
+                class="rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:opacity-50"
+                @click="triggerPluginTestEvent(activeSettingsPlugin.id)"
+              >
+                Test Event
+              </button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5 font-mono text-xs">
+              <button
+                v-for="m in [
+                  { id: 'always', label: 'Always' },
+                  { id: 'on_event', label: 'On Event' },
+                  { id: 'off', label: 'Off' },
+                ]"
+                :key="m.id"
+                type="button"
+                class="rounded-md border px-2 py-1.5 text-[11px] font-semibold transition"
+                :class="
+                  draftPluginSettings.dynamicMode === m.id
+                    ? 'border-cyan-400/70 bg-cyan-500/20 text-cyan-200'
+                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                "
+                @click="draftPluginSettings.dynamicMode = m.id"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="font-mono text-xs text-slate-200">Slot Priority (1–100)</div>
+                <div class="text-[10px] text-slate-500">Higher priority claims earlier slots</div>
+              </div>
+              <input
+                v-model.number="draftPluginSettings.userPriority"
+                type="number"
+                min="1"
+                max="100"
+                class="w-20 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1 text-right font-mono text-xs font-semibold text-cyan-300 focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
           <component
             :is="activeSettingsPlugin.Settings"
             v-if="activeSettingsPlugin.Settings"
             v-model="draftPluginSettings"
           />
           <p v-else class="font-mono text-xs text-slate-400">
-            This plugin has no configurable settings UI.
+            This plugin has no additional widget settings.
           </p>
         </div>
 

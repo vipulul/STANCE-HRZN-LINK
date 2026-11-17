@@ -1,0 +1,22 @@
+{
+  "id": "telemetry",
+  "name": "HUD Telemetry",
+  "description": "Live stream FPS, flap state, servo pulse, and connection diagnostics.",
+  "version": "1.0.0",
+  "basePriority": 6,
+  "defaultDynamicMode": "on_event",
+  "defaultSettings": {
+    "dynamicMode": "on_event",
+    "userPriority": 6,
+    "accentColor": "#00f0ff",
+    "showFps": true,
+    "showFlapState": true,
+    "showServoPulse": true,
+    "showDeviceStatus": true,
+    "showLatency": true,
+    "showLayout": false,
+    "compactLabels": false,
+    "autoSurfaceOnEvent": true,
+    "activeWhenFlapOpen": false
+  }
+}

@@ -9,6 +9,7 @@ export type GridLayoutId =
   | '3x1'
   | '4x1'
 export type LayoutMode = 'manual' | 'dynamic'
+export type PluginDynamicMode = 'always' | 'on_event' | 'off'
 export type ClockStylePreset = 'minimal' | 'tactical' | 'segmented'
 
 export interface DynamicRulesConfig {
@@ -16,6 +17,7 @@ export interface DynamicRulesConfig {
   night_start_hour: number
   night_end_hour: number
   night_style_preset: ClockStylePreset
+  event_hold_seconds: number
 }
 
 export interface HrznConfig {
@@ -63,6 +65,11 @@ export interface PluginRuntimeStatus {
   name: string
   active: boolean
   priority: number
+  dynamic_mode?: PluginDynamicMode
+  user_priority?: number
+  event_triggered?: boolean
+  holding_event?: boolean
+  hold_remaining_s?: number
   reason: string
   data: Record<string, unknown>
   settings_override: Record<string, unknown>
@@ -75,6 +82,7 @@ export interface PluginManifest {
   version?: string
   base_priority: number
   basePriority?: number
+  defaultDynamicMode?: PluginDynamicMode
   default_settings: Record<string, unknown>
   defaultSettings?: Record<string, unknown>
   hasWidget?: boolean

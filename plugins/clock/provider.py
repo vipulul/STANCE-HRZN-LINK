@@ -17,8 +17,11 @@ class ClockPluginProvider(HudPluginProvider):
         "High-contrast cyberpunk/avionic HUD clock with adaptive radial arc gauge, "
         "date, and style presets."
     )
-    base_priority = 1
+    base_priority = 10
+    default_dynamic_mode = "always"
     default_settings: dict[str, Any] = {
+        "dynamicMode": "always",
+        "userPriority": 10,
         "format24h": True,
         "showSeconds": True,
         "showDate": True,
@@ -46,9 +49,8 @@ class ClockPluginProvider(HudPluginProvider):
         return PluginRuntimeStatus(
             id=self.id,
             name=self.name,
-            active=True,
-            priority=self.base_priority,
-            reason="Base HUD timekeeping reference (priority 1)",
+            event_triggered=False,
+            reason="Base HUD timekeeping",
             data={
                 "iso": current.isoformat(),
                 "time_24h": current.strftime("%H:%M:%S"),

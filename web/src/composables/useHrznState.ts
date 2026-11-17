@@ -7,6 +7,7 @@ import type {
   HrznConfig,
   LayoutEvaluationResult,
   LayoutMode,
+  PluginDynamicMode,
   PluginManifest,
   StateSnapshot,
   WsLogEntry,
@@ -55,6 +56,7 @@ const config = reactive<HrznConfig>({
     night_start_hour: 22,
     night_end_hour: 7,
     night_style_preset: 'minimal',
+    event_hold_seconds: 12,
   },
 })
 
@@ -309,6 +311,40 @@ async function updatePluginSettings(
   return false
 }
 
+async function updatePluginDynamicConfig(
+  pluginId: string,
+  patch: { dynamicMode?: PluginDynamicMode; userPriority?: number },
+): Promise<boolean> {
+  const desc = patch.dynamicMode
+    ? `${pluginId} mode -> ${patch.dynamicMode}`
+    : `${pluginId} priority -> ${patch.userPriority}`
+  return updatePluginSettings(pluginId, patch, desc)
+}
+
+async function triggerPluginTestEvent(pluginId: string): Promise<boolean> {
+  saving.value = true
+  try {
+    const res = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/test-event`, {
+      method: 'POST',
+    })
+    if (res.ok) {
+      const data = (await res.json()) as StateSnapshot
+      applySnapshot(data, true)
+      flashStatus(
+        `Test event fired for ${pluginId} (${config.dynamic_rules.event_hold_seconds}s hold)`,
+      )
+      return true
+    }
+    flashStatus(`Failed to trigger test event for ${pluginId}`)
+    return false
+  } catch {
+    flashStatus(`Network error triggering ${pluginId} test event`)
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+
 async function triggerPluginReload(): Promise<boolean> {
   reloadingPlugins.value = true
   try {
@@ -444,6 +480,8 @@ export function useHrznState() {
     updateConfigPatch,
     saveHardwareConfig,
     updatePluginSettings,
+    updatePluginDynamicConfig,
+    triggerPluginTestEvent,
     triggerPluginReload,
     sendFlapMove,
     sendBrightness,

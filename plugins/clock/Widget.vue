@@ -112,7 +112,10 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
 <template>
   <div
     class="clock-widget"
-    :class="presetClass"
+    :class="[
+      presetClass,
+      { 'has-arc-ring': mergedSettings.showArcRing && mergedSettings.stylePreset !== 'minimal' },
+    ]"
     :style="{ '--clock-accent': mergedSettings.accentColor }"
   >
     <!-- Tactical corner reticles (hidden automatically in compact/minimal modes via @container) -->
@@ -222,6 +225,7 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
 
 <style scoped>
 .clock-widget {
+  box-sizing: border-box;
   position: relative;
   width: 100%;
   height: 100%;
@@ -238,8 +242,11 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
 
 .clock-arc-svg {
   position: absolute;
-  width: min(88cqw, 88cqh);
-  height: min(88cqw, 88cqh);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(90cqw, 90cqh);
+  height: min(90cqw, 90cqh);
   pointer-events: none;
 }
 
@@ -265,6 +272,35 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
   justify-content: center;
   gap: clamp(2px, 2.2cqh, 10px);
   max-width: 100%;
+}
+
+/* Constrain core readout cleanly inside the inner tick radius when arc ring is visible */
+@container hud-slot (min-width: 171px) and (min-height: 171px) {
+  .has-arc-ring .clock-core {
+    gap: clamp(2px, 1.5cqmin, 8px);
+    max-width: 64cqmin;
+  }
+
+  .has-arc-ring .digits-main,
+  .has-arc-ring .digits-ghost {
+    font-size: clamp(16px, 14.5cqmin, 68px);
+  }
+
+  .has-arc-ring .seconds-badge {
+    font-size: clamp(9px, 5.2cqmin, 22px);
+  }
+
+  .has-arc-ring .ampm-badge {
+    font-size: clamp(7px, 3cqmin, 12px);
+  }
+
+  .has-arc-ring .seg-bar {
+    width: clamp(56px, 44cqmin, 155px);
+  }
+
+  .has-arc-ring .date-row {
+    font-size: clamp(8px, 3.6cqmin, 14px);
+  }
 }
 
 .time-row {
@@ -430,9 +466,15 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
   right: 14px;
 }
 
+/* Hide arc ring when either dimension is too small for a legible inner dial */
+@container hud-slot (max-height: 170px), (max-width: 170px) {
+  .clock-arc-svg {
+    display: none;
+  }
+}
+
 /* Wide compact strip (e.g. 2-big-1-small bottom slot or 1x2) */
-@container hud-slot (max-height: 135px) {
-  .clock-arc-svg,
+@container hud-slot (max-height: 165px) and (min-width: 300px) {
   .tactical-tag {
     display: none;
   }
@@ -444,7 +486,7 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
 
   .digits-main,
   .digits-ghost {
-    font-size: clamp(20px, 46cqh, 54px);
+    font-size: clamp(20px, 44cqh, 54px);
   }
 
   .seg-bar {
@@ -462,8 +504,7 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
 }
 
 /* Narrow strip (e.g. 3x1 or 4x1) */
-@container hud-slot (max-width: 155px) {
-  .clock-arc-svg,
+@container hud-slot (max-width: 165px) {
   .tactical-tag,
   .reticle {
     display: none;
@@ -503,9 +544,8 @@ const presetClass = computed(() => `preset-${mergedSettings.value.stylePreset}`)
   }
 }
 
-/* Very small square or quadrant */
-@container hud-slot (max-width: 210px) and (max-height: 170px) {
-  .clock-arc-svg,
+/* Small quadrant (e.g. 2x2) */
+@container hud-slot (max-width: 250px) and (max-height: 170px) {
   .tactical-tag {
     display: none;
   }

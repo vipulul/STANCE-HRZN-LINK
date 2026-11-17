@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+PluginDynamicMode = Literal["always", "on_event", "off"]
 
 
 class PluginRuntimeStatus(BaseModel):
@@ -15,7 +18,12 @@ class PluginRuntimeStatus(BaseModel):
     id: str
     name: str
     active: bool = True
-    priority: int = 1
+    priority: int = 10
+    dynamic_mode: PluginDynamicMode = "always"
+    user_priority: int = 10
+    event_triggered: bool = False
+    holding_event: bool = False
+    hold_remaining_s: float = 0.0
     reason: str = ""
     data: dict[str, Any] = Field(default_factory=dict)
     settings_override: dict[str, Any] = Field(default_factory=dict)
@@ -28,7 +36,8 @@ class HudPluginProvider(ABC):
     name: str = ""
     description: str = ""
     version: str = "1.0.0"
-    base_priority: int = 1
+    base_priority: int = 10
+    default_dynamic_mode: PluginDynamicMode = "always"
     default_settings: dict[str, Any] = {}
     has_widget: bool = True
     has_settings: bool = False
@@ -40,18 +49,24 @@ class HudPluginProvider(ABC):
         settings: dict[str, Any],
         now: Optional[datetime] = None,
     ) -> PluginRuntimeStatus:
-        """Evaluate current plugin state, priority, and live widget payload."""
+        """Evaluate current plugin state, event trigger flag, and live widget payload."""
+
+    def get_router(self) -> Optional[APIRouter]:
+        """Optionally return a FastAPI APIRouter mounted at `/api/plugins/{id}`."""
+        return None
 
     def merge_settings(self, saved: Optional[dict[str, Any]]) -> dict[str, Any]:
         """Merge persisted user settings onto this plugin's defaults."""
         merged = dict(self.default_settings)
+        merged.setdefault("dynamicMode", self.default_dynamic_mode)
+        merged.setdefault("userPriority", self.base_priority)
         if saved:
             merged.update(saved)
         return merged
 
     def to_manifest(self) -> dict[str, Any]:
         """Serialize static metadata and default settings for API consumers."""
-        defaults = dict(self.default_settings)
+        defaults = self.merge_settings(None)
         return {
             "id": self.id,
             "name": self.name,
@@ -59,6 +74,7 @@ class HudPluginProvider(ABC):
             "version": self.version,
             "basePriority": self.base_priority,
             "base_priority": self.base_priority,
+            "defaultDynamicMode": self.default_dynamic_mode,
             "defaultSettings": defaults,
             "default_settings": defaults,
             "hasWidget": self.has_widget,
@@ -75,7 +91,8 @@ class ManifestPluginProvider(HudPluginProvider):
         name: str,
         description: str = "",
         version: str = "1.0.0",
-        base_priority: int = 1,
+        base_priority: int = 10,
+        default_dynamic_mode: PluginDynamicMode = "always",
         default_settings: Optional[dict[str, Any]] = None,
         has_widget: bool = True,
         has_settings: bool = False,
@@ -86,7 +103,10 @@ class ManifestPluginProvider(HudPluginProvider):
         self.description = description
         self.version = version
         self.base_priority = base_priority
+        self.default_dynamic_mode = default_dynamic_mode
         self.default_settings = dict(default_settings or {})
+        self.default_settings.setdefault("dynamicMode", default_dynamic_mode)
+        self.default_settings.setdefault("userPriority", base_priority)
         self.has_widget = has_widget
         self.has_settings = has_settings
         self.folder_name = folder_name or plugin_id
@@ -102,6 +122,9 @@ class ManifestPluginProvider(HudPluginProvider):
             name=self.name,
             active=True,
             priority=self.base_priority,
+            dynamic_mode=self.default_dynamic_mode,
+            user_priority=self.base_priority,
+            event_triggered=False,
             reason=f"Manifest-only plugin (priority {self.base_priority})",
             data={},
         )

@@ -33,6 +33,7 @@ class DynamicRulesConfig(BaseModel):
     night_start_hour: int = Field(default=22, ge=0, le=23)
     night_end_hour: int = Field(default=7, ge=0, le=23)
     night_style_preset: ClockStylePreset = "minimal"
+    event_hold_seconds: int = Field(default=12, ge=1, le=300)
 
 
 class DynamicRulesPatch(BaseModel):
@@ -42,6 +43,7 @@ class DynamicRulesPatch(BaseModel):
     night_start_hour: Optional[int] = Field(default=None, ge=0, le=23)
     night_end_hour: Optional[int] = Field(default=None, ge=0, le=23)
     night_style_preset: Optional[ClockStylePreset] = None
+    event_hold_seconds: Optional[int] = Field(default=None, ge=1, le=300)
 
 
 class HrznConfig(BaseModel):

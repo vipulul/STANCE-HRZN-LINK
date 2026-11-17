@@ -10,7 +10,9 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from server.plugins.base import HudPluginProvider, ManifestPluginProvider
+from fastapi import FastAPI
+
+from server.plugins.base import HudPluginProvider, ManifestPluginProvider, PluginDynamicMode
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -85,10 +87,20 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
         name = str(manifest.get("name") or plugin_id)
         description = str(manifest.get("description") or "")
         version = str(manifest.get("version") or "1.0.0")
-        raw_priority = manifest.get("basePriority", manifest.get("base_priority", 1))
-        base_priority = int(raw_priority)
+        raw_priority = manifest.get("basePriority", manifest.get("base_priority", 10))
+        base_priority = max(1, min(100, int(raw_priority)))
         raw_defaults = manifest.get("defaultSettings", manifest.get("default_settings"))
         default_settings = dict(raw_defaults) if isinstance(raw_defaults, dict) else {}
+
+        raw_mode = str(
+            manifest.get("defaultDynamicMode")
+            or manifest.get("default_dynamic_mode")
+            or default_settings.get("dynamicMode")
+            or "always"
+        ).strip().lower()
+        default_dynamic_mode: PluginDynamicMode = (
+            raw_mode if raw_mode in ("always", "on_event", "off") else "always"  # type: ignore[assignment]
+        )
 
         has_widget = (plugin_dir / "Widget.vue").is_file()
         has_settings = (plugin_dir / "Settings.vue").is_file()
@@ -108,6 +120,7 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
                 description=description,
                 version=version,
                 base_priority=base_priority,
+                default_dynamic_mode=default_dynamic_mode,
                 default_settings=default_settings,
                 has_widget=has_widget,
                 has_settings=has_settings,
@@ -119,14 +132,16 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
             provider.description = description
             provider.version = version
             provider.base_priority = base_priority
+            provider.default_dynamic_mode = default_dynamic_mode
             provider.has_widget = has_widget
             provider.has_settings = has_settings
             provider.folder_name = plugin_dir.name
+            merged_defaults = dict(provider.default_settings)
             if default_settings:
-                provider.default_settings = {
-                    **dict(provider.default_settings),
-                    **default_settings,
-                }
+                merged_defaults.update(default_settings)
+            merged_defaults.setdefault("dynamicMode", default_dynamic_mode)
+            merged_defaults.setdefault("userPriority", base_priority)
+            provider.default_settings = merged_defaults
 
         registry[plugin_id] = provider
 
@@ -134,13 +149,56 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
 
 
 PLUGIN_REGISTRY: dict[str, HudPluginProvider] = discover_plugins()
+_MOUNTED_APP: Optional[FastAPI] = None
+_MOUNTED_PLUGIN_ROUTES: list[Any] = []
 
 
-def reload_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginProvider]:
+def mount_plugin_routers(
+    app: FastAPI,
+    registry: Optional[dict[str, HudPluginProvider]] = None,
+) -> None:
+    """Mount (or re-mount) optional `provider.get_router()` routers on the FastAPI app."""
+    global _MOUNTED_APP
+    _MOUNTED_APP = app
+
+    if _MOUNTED_PLUGIN_ROUTES:
+        mounted_ids = {id(route) for route in _MOUNTED_PLUGIN_ROUTES}
+        app.router.routes[:] = [
+            route for route in app.router.routes if id(route) not in mounted_ids
+        ]
+        _MOUNTED_PLUGIN_ROUTES.clear()
+
+    active_registry = registry if registry is not None else PLUGIN_REGISTRY
+    for plugin_id, provider in active_registry.items():
+        try:
+            router = provider.get_router()
+        except Exception as exc:
+            print(f"[PLUGINS] Failed to build router for {plugin_id}: {exc}")
+            continue
+        if router is None:
+            continue
+        before = len(app.router.routes)
+        app.include_router(
+            router,
+            prefix=f"/api/plugins/{plugin_id}",
+            tags=[f"plugin:{plugin_id}"],
+        )
+        _MOUNTED_PLUGIN_ROUTES.extend(app.router.routes[before:])
+
+    app.openapi_schema = None
+
+
+def reload_plugins(
+    plugins_dir: Optional[Path] = None,
+    app: Optional[FastAPI] = None,
+) -> dict[str, HudPluginProvider]:
     """Re-scan the plugins directory and refresh `PLUGIN_REGISTRY` in place."""
     fresh = discover_plugins(plugins_dir)
     PLUGIN_REGISTRY.clear()
     PLUGIN_REGISTRY.update(fresh)
+    target_app = app if app is not None else _MOUNTED_APP
+    if target_app is not None:
+        mount_plugin_routers(target_app, PLUGIN_REGISTRY)
     return PLUGIN_REGISTRY
 
 
@@ -172,7 +230,7 @@ def get_plugin_manifests() -> list[dict[str, Any]]:
 def get_default_plugin_configs() -> dict[str, dict[str, Any]]:
     """Return a fresh mapping of default settings per registered plugin."""
     return {
-        plugin_id: dict(provider.default_settings)
+        plugin_id: provider.merge_settings(None)
         for plugin_id, provider in PLUGIN_REGISTRY.items()
     }
 
