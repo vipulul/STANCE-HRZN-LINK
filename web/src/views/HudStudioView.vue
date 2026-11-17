@@ -11,12 +11,14 @@ const {
   rendererMode,
   previewDataUrl,
   saving,
+  reloadingPlugins,
   setLayoutMode,
   setManualLayout,
   assignSlot,
   swapSlots,
   updateConfigPatch,
   updatePluginSettings,
+  triggerPluginReload,
 } = useHrznState()
 
 const showMirroredPreview = ref(false)
@@ -162,6 +164,14 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
         </div>
 
         <div class="flex items-center gap-2">
+          <button
+            type="button"
+            :disabled="reloadingPlugins"
+            class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 font-mono text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+            @click="triggerPluginReload"
+          >
+            {{ reloadingPlugins ? 'Reloading...' : 'Reload Plugins' }}
+          </button>
           <button
             type="button"
             class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-xs text-slate-300 transition hover:border-cyan-500/50 hover:text-cyan-200"
@@ -508,9 +518,19 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
 
         <!-- Registered Plugins & Priority Status -->
         <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg">
-          <h2 class="mb-3 font-mono text-sm font-semibold uppercase tracking-wider text-cyan-300">
-            Registered HUD Plugins
-          </h2>
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <h2 class="font-mono text-sm font-semibold uppercase tracking-wider text-cyan-300">
+              Registered HUD Plugins
+            </h2>
+            <button
+              type="button"
+              :disabled="reloadingPlugins"
+              class="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+              @click="triggerPluginReload"
+            >
+              {{ reloadingPlugins ? 'Reloading...' : 'Reload Plugins' }}
+            </button>
+          </div>
           <div class="space-y-2.5">
             <div
               v-for="plugin in PLUGIN_LIST"

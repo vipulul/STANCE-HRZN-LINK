@@ -11,6 +11,7 @@ services:
       - "8080:8080" # Vue 3 Web UI, HTTP Config API, /ws/device (HRZN-01), and /ws/ui
     volumes:
       - ./data:/app/data # Persistent HRZN-01 servo calibration & HUD layout settings
+      - ./plugins:/app/plugins # Drop-in runtime HUD plugins directory
     environment:
       - TZ=UTC
       - HRZN_PORT=8080

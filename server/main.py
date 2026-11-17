@@ -22,7 +22,13 @@ from server.config_store import (
     HrznConfigPatch,
 )
 from server.layout_engine import LayoutEngine, LayoutEvaluationResult
-from server.plugins import get_plugin_manifests, get_plugin_provider
+from server.plugins import (
+    get_plugin_manifests,
+    get_plugin_provider,
+    merge_plugin_configs,
+    reload_plugins,
+    resolve_plugin_file,
+)
 from server.renderer import HUD_HEIGHT, HUD_WIDTH, HudRenderer, PlaywrightHudCapture
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +51,7 @@ class LinkState:
         self.device_ws: Optional[WebSocket] = None
         self.ui_clients: set[WebSocket] = set()
         self.frame_seq: int = 0
+        self.plugin_reload_token: int = 1
         self.latest_preview_png: bytes = b""
         self.latest_preview_data_url: str = ""
         self.latest_layout: LayoutEvaluationResult = self.layout_engine.evaluate(self.store.config)
@@ -102,6 +109,8 @@ class LinkState:
             "config": cfg.model_dump(),
             "device": self.device_status.model_dump(),
             "layout": layout_eval.model_dump(),
+            "plugins": get_plugin_manifests(),
+            "plugin_reload_token": self.plugin_reload_token,
         }
         captured = await self.playwright_capture.capture_frame(
             width=cfg.display_width,
@@ -124,6 +133,7 @@ class LinkState:
             "device": self.device_status.model_dump(),
             "layout": self.latest_layout.model_dump(),
             "plugins": get_plugin_manifests(),
+            "plugin_reload_token": self.plugin_reload_token,
             "renderer_mode": "playwright" if self.playwright_capture.is_ready else "pillow-fallback",
             "logs": list(self.ws_logs),
         }
@@ -263,6 +273,23 @@ class LinkState:
         await self.broadcast_ui()
         return self.build_ui_snapshot(include_preview=False)
 
+    async def reload_all_plugins(self) -> dict[str, Any]:
+        """Rescan the top-level plugins directory, seed defaults, and broadcast updates."""
+        discovered = reload_plugins()
+        self.store.config.plugin_configs = merge_plugin_configs(self.store.config.plugin_configs)
+        self.store.save()
+        self.plugin_reload_token += 1
+        self.refresh_layout()
+        self.renderer.reset_diff_state()
+        self.add_log(
+            "plugins",
+            "plugins_reloaded",
+            f"discovered={','.join(discovered.keys())} token={self.plugin_reload_token}",
+        )
+        await self.update_preview_frame()
+        await self.broadcast_ui()
+        return self.build_ui_snapshot(include_preview=False)
+
 
 state = LinkState()
 
@@ -348,8 +375,22 @@ async def get_plugins() -> dict[str, Any]:
     layout_eval = state.refresh_layout()
     return {
         "plugins": get_plugin_manifests(),
+        "plugin_reload_token": state.plugin_reload_token,
         "layout": layout_eval.model_dump(),
     }
+
+
+@app.post("/api/plugins/reload")
+async def reload_plugins_endpoint() -> dict[str, Any]:
+    return await state.reload_all_plugins()
+
+
+@app.get("/plugins-raw/{plugin_id}/{file_path:path}")
+async def serve_plugin_raw_file(plugin_id: str, file_path: str) -> FileResponse:
+    target = resolve_plugin_file(plugin_id, file_path)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Plugin asset not found")
+    return FileResponse(target, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/plugins/{plugin_id}/settings")
@@ -519,7 +560,11 @@ if (WEB_DIST_DIR / "assets").is_dir():
 
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str) -> FileResponse:
-    if full_path.startswith("api/") or full_path.startswith("ws/"):
+    if (
+        full_path.startswith("api/")
+        or full_path.startswith("ws/")
+        or full_path.startswith("plugins-raw/")
+    ):
         raise HTTPException(status_code=404, detail="Not found")
 
     index_file = WEB_DIST_DIR / "index.html"

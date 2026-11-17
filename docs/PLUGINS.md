@@ -1,21 +1,24 @@
 # STANCE // HRZN-LINK — Modular HUD Plugin Guide
 
-All HUD plugins live in a single top-level **`plugins/<plugin_id>/`** folder at the repository root. Both the Vue 3 frontend (via Vite `import.meta.glob`) and the FastAPI backend (via `server/plugins/registry.py`) **auto-discover** plugins from this directory—you never have to register files inside `web/` or `server/` manually.
+All HUD plugins live in a single top-level **`plugins/<plugin_id>/`** directory at the repository root and are **loaded dynamically at runtime**.
+
+- **No Vite rebuild or Docker image rebuild** is required when adding, removing, or editing a plugin's `.vue` UI or `plugin.json` manifest—just refresh the browser or click **Reload Plugins** in HUD Studio (`POST /api/plugins/reload`).
+- In Docker, `./plugins:/app/plugins` is volume-mounted into the container so host changes appear immediately. *(Restart the server/container only if modifying Python code inside an existing `provider.py`, or click **Reload Plugins** to load newly added `provider.py` modules.)*
 
 ---
 
 ## 1. Plugin Folder Structure
 
-Create a folder `plugins/<plugin_id>/` containing:
+Create a folder `plugins/<plugin_id>/`:
 
 ```text
 plugins/
 └── <plugin_id>/
-    ├── plugin.json     # Required: id, name, description, basePriority, defaultSettings
-    ├── Widget.vue      # Required: container-responsive HUD display component
-    ├── Settings.vue    # Optional: settings drawer UI (v-model)
+    ├── plugin.json     # Required: id, name, description, version, basePriority, defaultSettings
+    ├── Widget.vue      # Required: container-responsive HUD display SFC (compiled at runtime)
+    ├── Settings.vue    # Optional: settings drawer UI SFC (v-model, compiled at runtime)
     ├── provider.py     # Optional: backend live data & Dynamic Mode status provider
-    └── types.ts        # Optional: local TypeScript interfaces
+    └── types.ts        # Optional: local TypeScript interfaces shared by Widget & Settings
 ```
 
 ### `plugin.json` (Single Source of Truth)
@@ -36,21 +39,27 @@ plugins/
 
 - `id`: Unique identifier matching the folder name and slot assignments.
 - `basePriority`: Used by Dynamic Mode when ranking active plugins (`clock` uses `1`).
-- `defaultSettings`: Automatically seeded into `ConfigStore` (`data/config.json`) and passed to both `Widget.vue` and `Settings.vue`.
+- `defaultSettings`: Seeded into `ConfigStore` (`data/config.json`) on startup and on `POST /api/plugins/reload`, and passed to both `Widget.vue` and `Settings.vue`.
 
 ---
 
-## 2. Frontend Components (`Widget.vue` & `Settings.vue`)
+## 2. Runtime `.vue` Components (`Widget.vue` & `Settings.vue`)
 
-### `Widget.vue`
+The frontend fetches `/plugins-raw/<id>/Widget.vue` (and `Settings.vue` when present) directly from FastAPI and compiles `<script setup>` (JS or TypeScript), `<template>`, and `<style scoped>` in-browser using `@vue/compiler-sfc` + `sucrase`.
 
-Receives these props from `HudGridCanvas.vue`:
+### Supported Imports in Runtime SFCs
+- `'vue'` (`computed`, `ref`, `watch`, `onMounted`, etc.)
+- Relative imports inside your plugin directory (`./types`, `./helper.ts`, `./plugin.json`, `./SubComponent.vue`)
+- *(Note: External npm packages or files outside `plugins/<id>/` are not available to runtime-loaded drop-in plugins.)*
+
+### `Widget.vue` Props
+Receives from `HudGridCanvas.vue`:
 - `settings`: Merged settings object (`defaultSettings` + saved user overrides + Dynamic Mode overrides)
 - `data`: Live JSON dictionary returned by `provider.py` (`layout.plugin_data[id]`)
 - `slotIndex`: Zero-based slot index (`0..3`)
 - `layout`: Active grid template (`'1x1' | '2x1' | '1x2' | '2x2' | '2-big-1-small' | '3x1' | '4x1'`)
 
-#### Container-Responsive CSS Guidelines
+### Container-Responsive CSS Guidelines
 
 Every slot in `HudGridCanvas.vue` defines:
 
@@ -59,31 +68,24 @@ container-type: size;
 container-name: hud-slot;
 ```
 
-Follow these rules so your widget adapts smoothly from a full `1x1` screen (`480×320`) down to a narrow `4x1` strip (`~118×320`) or compact bottom slot (`~480×110`):
+Style your `Widget.vue` using `<style scoped>` CSS (rather than new custom Tailwind utilities not already compiled in the core UI) so styles apply immediately at runtime:
 
 - Use **`#000000` pure black backgrounds** — black pixels appear transparent on the `HRZN-01` optical combiner film.
 - Size typography and graphics using **`clamp()`** combined with **`cqw`**, **`cqh`**, and **`cqmin`** rather than fixed pixel sizes.
-- Use **`@container hud-slot (...)`** queries to hide secondary ornaments or switch layout direction in constrained slots:
+- Use **`@container hud-slot (...)`** queries to adapt from `1x1` (`480×320`) down to `4x1` (`~118×320`) or `2-big-1-small` compact slots (`~480×110`):
   - `@container hud-slot (max-width: 155px)` — narrow vertical strips (`3x1`, `4x1`)
   - `@container hud-slot (max-height: 135px)` — wide shallow slots (`1x2`, compact slot in `2-big-1-small`)
 - Keep high contrast (`>= 7:1`) and avoid hover-only information in `Widget.vue`.
 
 ### `Settings.vue` (Optional)
 
-Rendered inside the HUD Studio settings drawer. Accepts `modelValue` and emits `update:modelValue` (`v-model`), persisting updates through `POST /api/plugins/<id>/settings`:
-
-```vue
-<script setup lang="ts">
-const props = defineProps<{ modelValue?: Record<string, unknown> }>()
-const emit = defineEmits<{ (e: 'update:modelValue', val: Record<string, unknown>): void }>()
-</script>
-```
+Rendered inside the HUD Studio settings drawer. Accepts `modelValue` and emits `update:modelValue` (`v-model`), persisting updates through `POST /api/plugins/<id>/settings`.
 
 ---
 
 ## 3. Optional Backend Provider (`provider.py`)
 
-If your plugin only displays static/client-side UI, omit `provider.py`—the server automatically creates a `ManifestPluginProvider` from `plugin.json`.
+If your plugin only displays client-side UI, omit `provider.py`—the server automatically creates a `ManifestPluginProvider` from `plugin.json`.
 
 To fetch live server data or dynamically toggle `active` / `priority` for Dynamic Mode, add `plugins/<plugin_id>/provider.py` subclassing `HudPluginProvider`:
 
@@ -111,7 +113,7 @@ class MyPluginProvider(HudPluginProvider):
         )
 ```
 
-Metadata (`id`, `name`, `description`, `base_priority`, `default_settings`) is automatically populated from `plugin.json` on startup.
+Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_settings`) is automatically populated from `plugin.json` on startup and on `POST /api/plugins/reload`.
 
 ### Dynamic Mode Priority & Layout Rules (`server/layout_engine.py`)
 
@@ -124,9 +126,10 @@ Metadata (`id`, `name`, `description`, `base_priority`, `default_settings`) is a
 
 ---
 
-## 4. Reference Plugin (`plugins/clock/`)
+## 4. Runtime Endpoints & Reference Plugin (`plugins/clock/`)
 
-The built-in [`plugins/clock/`](../plugins/clock/plugin.json) package is the canonical reference implementation:
-- Base priority `1` (always active as the base timekeeping widget).
-- Settings: `format24h`, `showSeconds`, `showDate`, `showArcRing`, `accentColor`, and `stylePreset` (`minimal`, `tactical`, `segmented`).
-- Adapts its radial SVG arc ring, corner reticles, segmented bar, and date readout across all 7 grid layouts.
+- `GET /api/plugins` — Lists discovered plugin manifests (`id`, `name`, `description`, `version`, `basePriority`, `defaultSettings`, `hasWidget`, `hasSettings`) and current layout evaluation.
+- `POST /api/plugins/reload` — Rescans `./plugins/`, imports new providers, seeds new `defaultSettings`, and notifies all connected UIs + Playwright.
+- `GET /plugins-raw/<id>/<file>` — Serves raw `.vue`, `.ts`, `.js`, and `.json` files directly from `./plugins/<id>/` with `Cache-Control: no-store`.
+
+The built-in [`plugins/clock/`](../plugins/clock/plugin.json) package is the canonical reference plugin.

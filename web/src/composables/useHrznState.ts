@@ -1,5 +1,5 @@
 import { computed, reactive, ref } from 'vue'
-import { getDefaultPluginSettings } from '../plugins/registry'
+import { getDefaultPluginSettings, syncRuntimePlugins } from '../plugins/registry'
 import type {
   DeviceStatus,
   FlapState,
@@ -14,12 +14,13 @@ import type {
 
 declare global {
   interface Window {
-    __HRZN_APPLY_STATE__?: (snapshot: StateSnapshot) => void
+    __HRZN_APPLY_STATE__?: (snapshot: StateSnapshot) => void | Promise<void>
   }
 }
 
 const uiConnected = ref(false)
 const saving = ref(false)
+const reloadingPlugins = ref(false)
 const statusMessage = ref<string | null>(null)
 const hasUnsavedConfig = ref(false)
 const previewDataUrl = ref<string>('/api/preview.png')
@@ -140,6 +141,7 @@ function applySnapshot(snapshot: StateSnapshot, forceConfigSync = false) {
   }
   if (snapshot.plugins) {
     plugins.value = snapshot.plugins
+    void syncRuntimePlugins(snapshot.plugins, snapshot.plugin_reload_token ?? 1)
   }
   if (snapshot.renderer_mode) {
     rendererMode.value = snapshot.renderer_mode
@@ -152,8 +154,11 @@ function applySnapshot(snapshot: StateSnapshot, forceConfigSync = false) {
   }
 }
 
-window.__HRZN_APPLY_STATE__ = (snapshot: StateSnapshot) => {
+window.__HRZN_APPLY_STATE__ = async (snapshot: StateSnapshot) => {
   applySnapshot(snapshot, true)
+  if (snapshot.plugins) {
+    await syncRuntimePlugins(snapshot.plugins, snapshot.plugin_reload_token ?? 1)
+  }
 }
 
 async function fetchInitialState() {
@@ -162,6 +167,21 @@ async function fetchInitialState() {
     if (res.ok) {
       const data = (await res.json()) as StateSnapshot
       applySnapshot(data, true)
+      if (data.plugins) {
+        await syncRuntimePlugins(data.plugins, data.plugin_reload_token ?? 1)
+      } else {
+        const plugRes = await fetch('/api/plugins')
+        if (plugRes.ok) {
+          const plugData = (await plugRes.json()) as {
+            plugins?: PluginManifest[]
+            plugin_reload_token?: number
+          }
+          if (plugData.plugins) {
+            plugins.value = plugData.plugins
+            await syncRuntimePlugins(plugData.plugins, plugData.plugin_reload_token ?? 1)
+          }
+        }
+      }
     }
   } catch {
     // WebSocket reconnect handles recovery
@@ -289,6 +309,29 @@ async function updatePluginSettings(
   return false
 }
 
+async function triggerPluginReload(): Promise<boolean> {
+  reloadingPlugins.value = true
+  try {
+    const res = await fetch('/api/plugins/reload', { method: 'POST' })
+    if (res.ok) {
+      const data = (await res.json()) as StateSnapshot
+      applySnapshot(data, true)
+      if (data.plugins) {
+        await syncRuntimePlugins(data.plugins, data.plugin_reload_token ?? 1, true)
+      }
+      flashStatus(`Reloaded ${data.plugins?.length ?? 0} plugin(s) from ./plugins`)
+      return true
+    }
+    flashStatus('Failed to reload plugins')
+    return false
+  } catch {
+    flashStatus('Network error while reloading plugins')
+    return false
+  } finally {
+    reloadingPlugins.value = false
+  }
+}
+
 async function sendFlapMove(state: FlapState, positionPct?: number) {
   const targetPct =
     state === 'open' ? 100 : state === 'closed' ? 0 : (positionPct ?? config.target_angle_pct)
@@ -384,6 +427,7 @@ export function useHrznState() {
   return {
     uiConnected,
     saving,
+    reloadingPlugins,
     statusMessage,
     hasUnsavedConfig,
     previewDataUrl,
@@ -400,6 +444,7 @@ export function useHrznState() {
     updateConfigPatch,
     saveHardwareConfig,
     updatePluginSettings,
+    triggerPluginReload,
     sendFlapMove,
     sendBrightness,
     setLayoutMode,

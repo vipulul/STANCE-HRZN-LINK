@@ -1,71 +1,132 @@
-import type { Component } from 'vue'
+import { defineComponent, h, markRaw, reactive, ref, type Component } from 'vue'
+import type { PluginManifest } from '../types/hrzn'
+import { loadRuntimePluginSfc } from './sfcLoader'
 import type { HudPluginDefinition } from './types'
 
-interface RawPluginManifest {
-  id?: string
-  name?: string
-  description?: string
-  basePriority?: number
-  defaultSettings?: Record<string, unknown>
+interface CachedPluginEntry {
+  token: number
+  definition: HudPluginDefinition<any>
 }
 
-const manifestModules = import.meta.glob<RawPluginManifest>(
-  '../../../plugins/*/plugin.json',
-  { eager: true, import: 'default' },
-)
+export const PLUGIN_LIST = ref<HudPluginDefinition<any>[]>([])
+export const PLUGIN_REGISTRY = reactive<Record<string, HudPluginDefinition<any>>>({})
 
-const widgetModules = import.meta.glob<Component>(
-  '../../../plugins/*/Widget.vue',
-  { eager: true, import: 'default' },
-)
+const compiledCache = new Map<string, CachedPluginEntry>()
+let syncChain: Promise<void> = Promise.resolve()
 
-const settingsModules = import.meta.glob<Component>(
-  '../../../plugins/*/Settings.vue',
-  { eager: true, import: 'default' },
-)
-
-function extractFolderName(globPath: string): string {
-  const parts = globPath.split('/')
-  return parts[parts.length - 2] ?? ''
+function makeErrorWidget(pluginId: string, message: string): Component {
+  return markRaw(
+    defineComponent({
+      name: `PluginError_${pluginId}`,
+      setup() {
+        return () =>
+          h(
+            'div',
+            {
+              class:
+                'flex h-full w-full flex-col items-center justify-center bg-black p-2 text-center font-mono text-[10px] text-rose-400',
+            },
+            [
+              h('div', { class: 'font-bold uppercase' }, `Plugin "${pluginId}" Error`),
+              h('div', { class: 'mt-1 text-slate-500 break-all' }, message),
+            ],
+          )
+      },
+    }),
+  )
 }
 
-const widgetsByFolder = new Map<string, Component>(
-  Object.entries(widgetModules).map(([path, comp]) => [extractFolderName(path), comp]),
-)
+export async function syncRuntimePlugins(
+  manifests: PluginManifest[],
+  reloadToken = 1,
+  forceReload = false,
+): Promise<void> {
+  if (
+    !forceReload &&
+    manifests.length === PLUGIN_LIST.value.length &&
+    manifests.every((m, idx) => {
+      const cached = compiledCache.get(m.id)
+      return cached && cached.token === reloadToken && PLUGIN_LIST.value[idx]?.id === m.id
+    })
+  ) {
+    return
+  }
 
-const settingsByFolder = new Map<string, Component>(
-  Object.entries(settingsModules).map(([path, comp]) => [extractFolderName(path), comp]),
-)
+  const run = async () => {
+    if (forceReload) {
+      compiledCache.clear()
+    }
 
-const discovered: HudPluginDefinition<any>[] = []
+    const nextList: HudPluginDefinition<any>[] = []
 
-for (const [path, manifest] of Object.entries(manifestModules)) {
-  const folder = extractFolderName(path)
-  const Widget = widgetsByFolder.get(folder)
-  if (!folder || !Widget) continue
+    for (const manifest of manifests) {
+      const id = manifest.id
+      const defaults = {
+        ...(manifest.defaultSettings ?? manifest.default_settings ?? {}),
+      }
 
-  const id = manifest.id || folder
-  discovered.push({
-    id,
-    name: manifest.name || id,
-    description: manifest.description || '',
-    defaultSettings: manifest.defaultSettings ? { ...manifest.defaultSettings } : {},
-    Widget,
-    Settings: settingsByFolder.get(folder),
-  })
+      const cached = compiledCache.get(id)
+      if (!forceReload && cached && cached.token === reloadToken) {
+        const updatedDef: HudPluginDefinition<any> = {
+          ...cached.definition,
+          name: manifest.name || id,
+          description: manifest.description || '',
+          defaultSettings: defaults,
+        }
+        cached.definition = updatedDef
+        nextList.push(updatedDef)
+        continue
+      }
+
+      let WidgetComp: Component
+      if (manifest.hasWidget === false) {
+        WidgetComp = makeErrorWidget(id, 'Missing Widget.vue')
+      } else {
+        try {
+          WidgetComp = await loadRuntimePluginSfc(id, 'Widget.vue')
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[PLUGINS] Failed to compile ${id}/Widget.vue:`, err)
+          WidgetComp = makeErrorWidget(id, msg)
+        }
+      }
+
+      let SettingsComp: Component | undefined
+      if (manifest.hasSettings) {
+        try {
+          SettingsComp = await loadRuntimePluginSfc(id, 'Settings.vue')
+        } catch (err) {
+          console.error(`[PLUGINS] Failed to compile ${id}/Settings.vue:`, err)
+        }
+      }
+
+      const definition: HudPluginDefinition<any> = {
+        id,
+        name: manifest.name || id,
+        description: manifest.description || '',
+        defaultSettings: defaults,
+        Widget: WidgetComp,
+        Settings: SettingsComp,
+      }
+      compiledCache.set(id, { token: reloadToken, definition })
+      nextList.push(definition)
+    }
+
+    PLUGIN_LIST.value = nextList
+    const activeIds = new Set(nextList.map((p) => p.id))
+    for (const existingKey of Object.keys(PLUGIN_REGISTRY)) {
+      if (!activeIds.has(existingKey)) {
+        delete PLUGIN_REGISTRY[existingKey]
+      }
+    }
+    for (const def of nextList) {
+      PLUGIN_REGISTRY[def.id] = def
+    }
+  }
+
+  syncChain = syncChain.then(run, run)
+  return syncChain
 }
-
-discovered.sort((a, b) => {
-  if (a.id === 'clock') return -1
-  if (b.id === 'clock') return 1
-  return a.id.localeCompare(b.id)
-})
-
-export const PLUGIN_LIST: HudPluginDefinition<any>[] = discovered
-
-export const PLUGIN_REGISTRY: Record<string, HudPluginDefinition<any>> = Object.fromEntries(
-  PLUGIN_LIST.map((plugin) => [plugin.id, plugin]),
-)
 
 export function getPluginById(
   id: string | null | undefined,

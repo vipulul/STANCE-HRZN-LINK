@@ -186,9 +186,9 @@ class PlaywrightHudCapture:
 
                 if state_payload is not None:
                     await self._page.evaluate(
-                        """(payload) => {
+                        """async (payload) => {
                             if (typeof window.__HRZN_APPLY_STATE__ === 'function') {
-                                window.__HRZN_APPLY_STATE__(payload);
+                                await window.__HRZN_APPLY_STATE__(payload);
                             }
                             return new Promise((resolve) =>
                                 requestAnimationFrame(() => requestAnimationFrame(resolve))

@@ -22,12 +22,5 @@
       "@plugins/*": ["../plugins/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.vue",
-    "../plugins/**/*.ts",
-    "../plugins/**/*.vue",
-    "../plugins/**/*.json"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

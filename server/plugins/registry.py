@@ -1,7 +1,8 @@
-"""Dynamic auto-discovery registry for top-level `plugins/` packages."""
+"""Dynamic runtime auto-discovery registry for top-level `plugins/` packages."""
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import os
@@ -23,7 +24,10 @@ def resolve_plugins_dir(plugins_dir: Optional[Path] = None) -> Path:
 
 
 def _load_provider_from_file(provider_path: Path, plugin_key: str) -> Optional[HudPluginProvider]:
+    importlib.invalidate_caches()
     module_name = f"hrzn_external_plugin_{plugin_key}"
+    sys.modules.pop(module_name, None)
+
     spec = importlib.util.spec_from_file_location(module_name, provider_path)
     if spec is None or spec.loader is None:
         return None
@@ -80,8 +84,14 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
 
         name = str(manifest.get("name") or plugin_id)
         description = str(manifest.get("description") or "")
-        base_priority = int(manifest.get("basePriority", 1))
-        default_settings = dict(manifest.get("defaultSettings") or {})
+        version = str(manifest.get("version") or "1.0.0")
+        raw_priority = manifest.get("basePriority", manifest.get("base_priority", 1))
+        base_priority = int(raw_priority)
+        raw_defaults = manifest.get("defaultSettings", manifest.get("default_settings"))
+        default_settings = dict(raw_defaults) if isinstance(raw_defaults, dict) else {}
+
+        has_widget = (plugin_dir / "Widget.vue").is_file()
+        has_settings = (plugin_dir / "Settings.vue").is_file()
 
         provider_path = plugin_dir / "provider.py"
         provider: Optional[HudPluginProvider] = None
@@ -96,14 +106,22 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
                 plugin_id=plugin_id,
                 name=name,
                 description=description,
+                version=version,
                 base_priority=base_priority,
                 default_settings=default_settings,
+                has_widget=has_widget,
+                has_settings=has_settings,
+                folder_name=plugin_dir.name,
             )
         else:
             provider.id = plugin_id
             provider.name = name
             provider.description = description
+            provider.version = version
             provider.base_priority = base_priority
+            provider.has_widget = has_widget
+            provider.has_settings = has_settings
+            provider.folder_name = plugin_dir.name
             if default_settings:
                 provider.default_settings = {
                     **dict(provider.default_settings),
@@ -124,6 +142,21 @@ def reload_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginPro
     PLUGIN_REGISTRY.clear()
     PLUGIN_REGISTRY.update(fresh)
     return PLUGIN_REGISTRY
+
+
+def resolve_plugin_file(
+    plugin_id: str,
+    file_path: str,
+    plugins_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """Safely resolve a file inside a discovered plugin's directory."""
+    plugins_root = resolve_plugins_dir(plugins_dir).resolve()
+    provider = PLUGIN_REGISTRY.get(plugin_id)
+    folder = provider.folder_name if (provider and provider.folder_name) else plugin_id
+    candidate = (plugins_root / folder / file_path).resolve()
+    if candidate.is_file() and candidate.is_relative_to(plugins_root):
+        return candidate
+    return None
 
 
 def get_plugin_provider(plugin_id: str) -> Optional[HudPluginProvider]:

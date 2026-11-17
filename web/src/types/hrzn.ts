@@ -72,8 +72,13 @@ export interface PluginManifest {
   id: string
   name: string
   description: string
+  version?: string
   base_priority: number
+  basePriority?: number
   default_settings: Record<string, unknown>
+  defaultSettings?: Record<string, unknown>
+  hasWidget?: boolean
+  hasSettings?: boolean
 }
 
 export interface LayoutEvaluationResult {
@@ -102,6 +107,7 @@ export interface StateSnapshot {
   device: DeviceStatus
   layout?: LayoutEvaluationResult
   plugins?: PluginManifest[]
+  plugin_reload_token?: number
   renderer_mode?: 'playwright' | 'pillow-fallback'
   logs?: WsLogEntry[]
   preview_data_url?: string

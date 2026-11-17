@@ -27,8 +27,12 @@ class HudPluginProvider(ABC):
     id: str = ""
     name: str = ""
     description: str = ""
+    version: str = "1.0.0"
     base_priority: int = 1
     default_settings: dict[str, Any] = {}
+    has_widget: bool = True
+    has_settings: bool = False
+    folder_name: str = ""
 
     @abstractmethod
     def evaluate(
@@ -47,12 +51,18 @@ class HudPluginProvider(ABC):
 
     def to_manifest(self) -> dict[str, Any]:
         """Serialize static metadata and default settings for API consumers."""
+        defaults = dict(self.default_settings)
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
+            "version": self.version,
+            "basePriority": self.base_priority,
             "base_priority": self.base_priority,
-            "default_settings": dict(self.default_settings),
+            "defaultSettings": defaults,
+            "default_settings": defaults,
+            "hasWidget": self.has_widget,
+            "hasSettings": self.has_settings,
         }
 
 
@@ -64,14 +74,22 @@ class ManifestPluginProvider(HudPluginProvider):
         plugin_id: str,
         name: str,
         description: str = "",
+        version: str = "1.0.0",
         base_priority: int = 1,
         default_settings: Optional[dict[str, Any]] = None,
+        has_widget: bool = True,
+        has_settings: bool = False,
+        folder_name: str = "",
     ) -> None:
         self.id = plugin_id
         self.name = name
         self.description = description
+        self.version = version
         self.base_priority = base_priority
         self.default_settings = dict(default_settings or {})
+        self.has_widget = has_widget
+        self.has_settings = has_settings
+        self.folder_name = folder_name or plugin_id
 
     def evaluate(
         self,

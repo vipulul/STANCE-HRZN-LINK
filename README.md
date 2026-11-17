@@ -56,10 +56,10 @@ stance-hrzn-link/
 │       ├── config.h
 │       ├── secrets.example.h
 │       └── sketch.yaml
-├── plugins/                    # Self-contained HUD plugin packages (auto-discovered)
+├── plugins/                    # Drop-in runtime HUD plugin packages (volume-mounted in Docker)
 │   └── clock/                  # Reference Clock plugin (plugin.json, Widget.vue, Settings.vue, provider.py)
 ├── server/                     # FastAPI backend, Playwright capture, layout engine & config store
-│   ├── plugins/                # Plugin SDK & auto-discovery registry
+│   ├── plugins/                # Plugin SDK & runtime rescan registry (/api/plugins/reload, /plugins-raw)
 │   ├── renderer/
 │   │   ├── hud_renderer.py     # NumPy mirroring, RGB565/JPEG packetizer & Pillow fallback
 │   │   └── playwright_capture.py

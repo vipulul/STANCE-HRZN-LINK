@@ -7,6 +7,8 @@ from .registry import (
     get_plugin_provider,
     merge_plugin_configs,
     reload_plugins,
+    resolve_plugin_file,
+    resolve_plugins_dir,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "get_plugin_provider",
     "merge_plugin_configs",
     "reload_plugins",
+    "resolve_plugin_file",
+    "resolve_plugins_dir",
 ]
