@@ -5,7 +5,14 @@ import HardwareDebugView from './views/HardwareDebugView.vue'
 import HudRenderView from './views/HudRenderView.vue'
 import HudStudioView from './views/HudStudioView.vue'
 
-const { uiConnected, device, statusMessage, startConnection } = useHrznState()
+const {
+  uiConnected,
+  device,
+  statusMessage,
+  reloadingPlugins,
+  startConnection,
+  triggerPluginReload,
+} = useHrznState()
 
 const currentPath = ref<string>(window.location.pathname || '/')
 
@@ -96,6 +103,16 @@ onBeforeUnmount(() => {
               Hardware &amp; Debug
             </a>
           </nav>
+
+          <button
+            type="button"
+            :disabled="reloadingPlugins"
+            class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 font-mono text-xs font-semibold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+            title="Rescan ./plugins directory and hot-reload plugins"
+            @click="triggerPluginReload"
+          >
+            {{ reloadingPlugins ? 'Reloading...' : '↻ Reload Plugins' }}
+          </button>
         </div>
 
         <!-- Connection & Action Status Badges -->

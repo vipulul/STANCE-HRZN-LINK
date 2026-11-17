@@ -578,4 +578,4 @@ async def serve_spa(full_path: str) -> FileResponse:
     if full_path and candidate.is_file() and candidate.is_relative_to(WEB_DIST_DIR.resolve()):
         return FileResponse(candidate)
 
-    return FileResponse(index_file)
+    return FileResponse(index_file, headers={"Cache-Control": "no-store"})
