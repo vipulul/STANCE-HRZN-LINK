@@ -1,5 +1,22 @@
 export type FlapState = 'open' | 'closed' | 'custom'
 export type FrameFormat = 'RGB565' | 'JPEG'
+export type GridLayoutId =
+  | '1x1'
+  | '2x1'
+  | '1x2'
+  | '2x2'
+  | '2-big-1-small'
+  | '3x1'
+  | '4x1'
+export type LayoutMode = 'manual' | 'dynamic'
+export type ClockStylePreset = 'minimal' | 'tactical' | 'segmented'
+
+export interface DynamicRulesConfig {
+  night_mode_enabled: boolean
+  night_start_hour: number
+  night_end_hour: number
+  night_style_preset: ClockStylePreset
+}
 
 export interface HrznConfig {
   servo_closed_us: number
@@ -14,6 +31,13 @@ export interface HrznConfig {
   target_fps: number
   hud_title: string
   hud_subtitle: string
+  display_width: number
+  display_height: number
+  layout_mode: LayoutMode
+  manual_layout: GridLayoutId
+  grid_slots: Array<string | null>
+  plugin_configs: Record<string, Record<string, unknown>>
+  dynamic_rules: DynamicRulesConfig
 }
 
 export interface DeviceStatus {
@@ -34,9 +58,51 @@ export interface DeviceStatus {
   last_seen: string | null
 }
 
+export interface PluginRuntimeStatus {
+  id: string
+  name: string
+  active: boolean
+  priority: number
+  reason: string
+  data: Record<string, unknown>
+  settings_override: Record<string, unknown>
+}
+
+export interface PluginManifest {
+  id: string
+  name: string
+  description: string
+  base_priority: number
+  default_settings: Record<string, unknown>
+}
+
+export interface LayoutEvaluationResult {
+  mode: LayoutMode
+  active_layout: GridLayoutId
+  slot_count: number
+  slots: Array<string | null>
+  reason: string
+  night_schedule_active: boolean
+  effective_plugin_settings: Record<string, Record<string, unknown>>
+  plugin_data: Record<string, Record<string, unknown>>
+  plugin_statuses: PluginRuntimeStatus[]
+}
+
+export interface WsLogEntry {
+  ts: string
+  source: string
+  event: string
+  detail: string
+  level: string
+}
+
 export interface StateSnapshot {
   type?: string
   config: HrznConfig
   device: DeviceStatus
+  layout?: LayoutEvaluationResult
+  plugins?: PluginManifest[]
+  renderer_mode?: 'playwright' | 'pillow-fallback'
+  logs?: WsLogEntry[]
   preview_data_url?: string
 }

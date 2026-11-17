@@ -56,15 +56,21 @@ stance-hrzn-link/
 │       ├── config.h
 │       ├── secrets.example.h
 │       └── sketch.yaml
-├── server/                     # FastAPI backend, Pillow/NumPy HUD renderer & config store
+├── plugins/                    # Self-contained HUD plugin packages (auto-discovered)
+│   └── clock/                  # Reference Clock plugin (plugin.json, Widget.vue, Settings.vue, provider.py)
+├── server/                     # FastAPI backend, Playwright capture, layout engine & config store
+│   ├── plugins/                # Plugin SDK & auto-discovery registry
 │   ├── renderer/
-│   │   └── hud_renderer.py
+│   │   ├── hud_renderer.py     # NumPy mirroring, RGB565/JPEG packetizer & Pillow fallback
+│   │   └── playwright_capture.py
 │   ├── config_store.py
+│   ├── layout_engine.py
 │   ├── main.py
 │   └── requirements.txt
 ├── web/                        # Vue 3 + Vite + TypeScript + Tailwind companion UI
 ├── hardware/                   # CAD STLs, wiring diagrams, and BOM (HRZN-01)
 ├── docs/
+│   ├── PLUGINS.md              # Modular HUD plugin authoring guide
 │   └── PROTOCOL.md             # WebSocket JSON & binary frame packet spec
 ├── Dockerfile                  # Multi-stage build (Vue dist -> Python 3.12 FastAPI)
 ├── docker-compose.yml          # Single-port 8080 service definition

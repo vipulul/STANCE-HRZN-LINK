@@ -1,0 +1,15 @@
+{
+  "id": "clock",
+  "name": "Chronos Avionic Clock",
+  "description": "High-contrast cyberpunk/avionic HUD clock with adaptive radial arc gauge, date, and style presets.",
+  "version": "1.0.0",
+  "basePriority": 1,
+  "defaultSettings": {
+    "format24h": true,
+    "showSeconds": true,
+    "showDate": true,
+    "showArcRing": true,
+    "accentColor": "#00f0ff",
+    "stylePreset": "tactical"
+  }
+}

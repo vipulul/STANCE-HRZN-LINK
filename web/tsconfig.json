@@ -14,7 +14,20 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "vue": ["./node_modules/vue"],
+      "@/*": ["./src/*"],
+      "@plugins/*": ["../plugins/*"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.vue",
+    "../plugins/**/*.ts",
+    "../plugins/**/*.vue",
+    "../plugins/**/*.json"
+  ]
 }

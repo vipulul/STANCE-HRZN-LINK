@@ -124,17 +124,19 @@ struct ServoMotion {
 } servoMotion;
 
 // Connectivity & diagnostics state
-bool        wsConnected      = false;
-bool        hasReceivedFrame = false;
-wl_status_t lastWifiStatus   = WL_IDLE_STATUS;
-uint32_t    lastWifiCheckMs  = 0;
-uint32_t    lastTelemetryMs  = 0;
-uint32_t    lastDiagMs       = 0;
-uint32_t    frameCounter     = 0;
-uint32_t    totalFramesRx    = 0;
-int16_t     lastFrameSeq     = -1;
-uint32_t    fpsWindowStartMs = 0;
-float       measuredFps      = 0.0f;
+bool        wsConnected            = false;
+bool        hasReceivedFrame       = false;
+wl_status_t lastWifiStatus         = WL_IDLE_STATUS;
+uint32_t    lastWifiCheckMs        = 0;
+uint32_t    lastTelemetryMs        = 0;
+uint32_t    lastDiagMs             = 0;
+uint32_t    frameCounter           = 0;
+uint32_t    totalFramesRx          = 0;
+int16_t     lastFrameSeq           = -1;
+uint32_t    fpsWindowStartMs       = 0;
+float       measuredFps            = 0.0f;
+char        lastWifiStatusText[64] = "";
+char        lastWsStatusText[64]   = "";
 
 // ----------------------------------------------------------------------------
 // Diagnostic Helpers
@@ -179,17 +181,26 @@ static void setBacklightBrightness(uint8_t brightness) {
 static void updateBootScreenStatus(const char* wifiMsg, const char* wsMsg) {
   if (hasReceivedFrame) return;
 
-  display.startWrite();
-  display.fillRect(14, 146, display.width() - 28, 16, TFT_BLACK);
-  display.setTextSize(1);
-  display.setCursor(14, 146);
-  display.setTextColor(WiFi.status() == WL_CONNECTED ? TFT_GREEN : TFT_YELLOW, TFT_BLACK);
-  display.printf("WIFI: %s", wifiMsg);
+  bool updateWifi = (strcmp(wifiMsg, lastWifiStatusText) != 0);
+  bool updateWs   = (strcmp(wsMsg, lastWsStatusText) != 0);
+  if (!updateWifi && !updateWs) return;
 
-  display.fillRect(14, 200, display.width() - 28, 16, TFT_BLACK);
-  display.setCursor(14, 200);
-  display.setTextColor(wsConnected ? TFT_GREEN : TFT_ORANGE, TFT_BLACK);
-  display.printf("LINK: %s", wsMsg);
+  display.startWrite();
+  display.setTextSize(1);
+  if (updateWifi) {
+    display.fillRect(14, 146, display.width() - 28, 16, TFT_BLACK);
+    display.setCursor(14, 146);
+    display.setTextColor(WiFi.status() == WL_CONNECTED ? TFT_GREEN : TFT_YELLOW, TFT_BLACK);
+    display.printf("WIFI: %s", wifiMsg);
+    snprintf(lastWifiStatusText, sizeof(lastWifiStatusText), "%s", wifiMsg);
+  }
+  if (updateWs) {
+    display.fillRect(14, 200, display.width() - 28, 16, TFT_BLACK);
+    display.setCursor(14, 200);
+    display.setTextColor(wsConnected ? TFT_GREEN : TFT_ORANGE, TFT_BLACK);
+    display.printf("LINK: %s", wsMsg);
+    snprintf(lastWsStatusText, sizeof(lastWsStatusText), "%s", wsMsg);
+  }
   display.endWrite();
 }
 
@@ -236,7 +247,21 @@ static void initBootScreen(const char* wifiMsg, const char* wsMsg) {
   display.printf("BRT: %u/255  HEAP: %u KB", currentBrightness, ESP.getFreeHeap() / 1024);
   display.endWrite();
 
+  lastWifiStatusText[0] = '\0';
+  lastWsStatusText[0]   = '\0';
   updateBootScreenStatus(wifiMsg, wsMsg);
+}
+
+static void returnToWaitingScreen(const char* wifiMsg, const char* wsMsg) {
+  if (hasReceivedFrame) {
+    hasReceivedFrame = false;
+    lastFrameSeq     = -1;
+    frameCounter     = 0;
+    measuredFps      = 0.0f;
+    initBootScreen(wifiMsg, wsMsg);
+  } else {
+    updateBootScreenStatus(wifiMsg, wsMsg);
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -515,7 +540,9 @@ static void onWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       wsConnected = false;
       if (WiFi.status() == WL_CONNECTED) {
         String ipStr = WiFi.localIP().toString();
-        updateBootScreenStatus(ipStr.c_str(), "WS Disconnected (retrying...)");
+        returnToWaitingScreen(ipStr.c_str(), "WS Disconnected (waiting for server...)");
+      } else {
+        returnToWaitingScreen(wifiStatusToString(WiFi.status()), "Waiting for Wi-Fi");
       }
       break;
 
@@ -569,7 +596,8 @@ static void ensureWifiConnected() {
                     WiFi.RSSI());
       updateBootScreenStatus(ipStr.c_str(), wsConnected ? "WS Connected" : "Connecting WS...");
     } else {
-      updateBootScreenStatus(wifiStatusToString(st), "Waiting for Wi-Fi");
+      wsConnected = false;
+      returnToWaitingScreen(wifiStatusToString(st), "Waiting for Wi-Fi");
     }
   }
 
