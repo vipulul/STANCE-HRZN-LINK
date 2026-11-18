@@ -14,6 +14,15 @@ export interface TelemetrySettings {
   compactLabels: boolean
   autoSurfaceOnEvent: boolean
   activeWhenFlapOpen: boolean
+  triggerOnFlapMove: boolean
+  triggerOnFlapOpen: boolean
+  triggerOnDeviceDisconnect: boolean
+  triggerOnWeakWifi: boolean
+  rssiThresholdDbm: number
+  triggerOnHighLatency: boolean
+  latencyThresholdMs: number
+  triggerOnLowFps: boolean
+  minFpsThreshold: number
 }
 
 export interface TelemetryPluginData {

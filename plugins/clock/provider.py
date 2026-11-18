@@ -19,6 +19,7 @@ class ClockPluginProvider(HudPluginProvider):
     )
     base_priority = 10
     default_dynamic_mode = "always"
+    supports_on_event = False
     default_settings: dict[str, Any] = {
         "dynamicMode": "always",
         "userPriority": 10,

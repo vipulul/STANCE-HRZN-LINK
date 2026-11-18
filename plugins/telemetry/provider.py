@@ -178,14 +178,29 @@ def _estimate_frame_latency_ms(
     return max(1, round(base_ms * pixel_scale + format_overhead))
 
 
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class TelemetryPluginProvider(HudPluginProvider):
     """Live stream, flap actuator, servo PWM, and ESP32-S3 diagnostics provider."""
 
     id = "telemetry"
     name = "HUD Telemetry"
-    description = "Live stream FPS, flap state, servo pulse, and connection diagnostics."
+    description = "Live stream FPS, flap state, servo pulse, and configurable link/hardware event triggers."
     base_priority = 6
     default_dynamic_mode = "on_event"
+    supports_on_event = True
     default_settings: dict[str, Any] = {
         "dynamicMode": "on_event",
         "userPriority": 6,
@@ -199,6 +214,15 @@ class TelemetryPluginProvider(HudPluginProvider):
         "compactLabels": False,
         "autoSurfaceOnEvent": True,
         "activeWhenFlapOpen": False,
+        "triggerOnFlapMove": True,
+        "triggerOnFlapOpen": False,
+        "triggerOnDeviceDisconnect": False,
+        "triggerOnWeakWifi": True,
+        "rssiThresholdDbm": -75,
+        "triggerOnHighLatency": False,
+        "latencyThresholdMs": 60,
+        "triggerOnLowFps": False,
+        "minFpsThreshold": 1.5,
     }
 
     def evaluate(
@@ -229,17 +253,36 @@ class TelemetryPluginProvider(HudPluginProvider):
         frame_latency_ms = _estimate_frame_latency_ms(config, link_state, renderer_mode)
         active_layout = _resolve_active_layout(config, link_state)
 
-        active_when_flap_open = bool(merged.get("activeWhenFlapOpen", False))
-        auto_surface = bool(merged.get("autoSurfaceOnEvent", True))
+        trigger_flap_move = bool(
+            merged.get("triggerOnFlapMove", merged.get("autoSurfaceOnEvent", True))
+        )
+        trigger_flap_open = bool(merged.get("triggerOnFlapOpen", False))
+        trigger_disconnect = bool(merged.get("triggerOnDeviceDisconnect", False))
+        trigger_weak_wifi = bool(merged.get("triggerOnWeakWifi", True))
+        rssi_thresh = _coerce_int(merged.get("rssiThresholdDbm"), -75)
+        trigger_high_latency = bool(merged.get("triggerOnHighLatency", False))
+        latency_thresh = _coerce_int(merged.get("latencyThresholdMs"), 60)
+        trigger_low_fps = bool(merged.get("triggerOnLowFps", False))
+        min_fps = _coerce_float(merged.get("minFpsThreshold"), 1.5)
 
-        if auto_surface and flap_state == "MOVING":
-            event_triggered = True
-            reason = "Flap actuator moving"
-        elif active_when_flap_open and flap_state == "OPEN":
-            event_triggered = True
-            reason = "Flap open"
+        active_triggers: list[str] = []
+        if trigger_flap_move and flap_state == "MOVING":
+            active_triggers.append("Flap moving")
+        if trigger_flap_open and flap_state == "OPEN":
+            active_triggers.append("Flap open")
+        if trigger_disconnect and not device_connected:
+            active_triggers.append("ESP32 offline")
+        if trigger_weak_wifi and wifi_rssi is not None and wifi_rssi <= rssi_thresh:
+            active_triggers.append(f"Weak Wi-Fi ({wifi_rssi} dBm <= {rssi_thresh})")
+        if trigger_high_latency and frame_latency_ms >= latency_thresh:
+            active_triggers.append(f"High latency ({frame_latency_ms} ms >= {latency_thresh})")
+        if trigger_low_fps and device_connected and stream_fps < min_fps:
+            active_triggers.append(f"Low FPS ({stream_fps:.1f} < {min_fps:.1f})")
+
+        event_triggered = len(active_triggers) > 0
+        if event_triggered:
+            reason = ", ".join(active_triggers)
         else:
-            event_triggered = False
             reason = (
                 f"Flap {flap_state.lower()} · "
                 f"{'ESP32 online' if device_connected else 'ESP32 standby'}"

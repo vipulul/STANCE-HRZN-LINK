@@ -15,6 +15,7 @@ export interface HudPluginDefinition<TSettings = any> {
   id: string
   name: string
   description: string
+  supportsOnEvent: boolean
   defaultSettings: TSettings
   Widget: Component
   Settings?: Component

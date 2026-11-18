@@ -56,8 +56,8 @@ const conditionDisplay = computed(() =>
 
 const iconId = computed<WeatherIconId>(() => props.data?.icon || 'unknown')
 
-const isAlertActive = computed(
-  () => Boolean(props.data?.severe) && Boolean(mergedSettings.value.alertOnSevereWeather),
+const isAlertActive = computed(() =>
+  Boolean(props.data?.event_triggered ?? (props.data?.severe && mergedSettings.value.alertOnSevereWeather)),
 )
 
 const hasTelemetryRow = computed(

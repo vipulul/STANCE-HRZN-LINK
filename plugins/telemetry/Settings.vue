@@ -23,6 +23,16 @@ function updateField<K extends keyof TelemetrySettings>(key: K, value: Telemetry
   })
 }
 
+function updateNumberField(
+  key: 'rssiThresholdDbm' | 'latencyThresholdMs' | 'minFpsThreshold',
+  raw: string,
+) {
+  const parsed = Number.parseFloat(raw)
+  if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+    updateField(key, parsed)
+  }
+}
+
 const metricToggles: Array<{ key: keyof TelemetrySettings; label: string }> = [
   { key: 'showFps', label: 'Stream FPS' },
   { key: 'showFlapState', label: 'Flap State' },
@@ -65,10 +75,10 @@ const swatches = [
       </label>
     </div>
 
-    <!-- Display & Dynamic Priority Behavior -->
+    <!-- Display Style -->
     <div class="space-y-2">
       <label class="block font-mono text-xs uppercase tracking-wider text-slate-400">
-        Layout &amp; Dynamic Behavior
+        Display Style
       </label>
 
       <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
@@ -83,32 +93,139 @@ const swatches = [
           @change="updateField('compactLabels', ($event.target as HTMLInputElement).checked)"
         />
       </label>
+    </div>
+
+    <!-- On-Event Trigger Conditions -->
+    <div class="space-y-2">
+      <label class="block font-mono text-xs uppercase tracking-wider text-amber-300">
+        On-Event Trigger Conditions
+      </label>
+      <p class="text-[11px] text-slate-400">
+        Choose which hardware or link events automatically surface Telemetry in Dynamic Mode.
+      </p>
 
       <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
         <div>
-          <div class="text-xs text-slate-200">Show in Dynamic Mode When Flap Open</div>
-          <div class="text-[11px] text-slate-400">Auto-activate widget when flap opens; hide when flap is closed</div>
+          <div class="text-xs text-slate-200">Flap Actuator Moving</div>
+          <div class="text-[11px] text-slate-400">Surface while the motorized flap sweeps</div>
         </div>
         <input
-          :checked="current.activeWhenFlapOpen"
+          :checked="current.triggerOnFlapMove"
           type="checkbox"
           class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
-          @change="updateField('activeWhenFlapOpen', ($event.target as HTMLInputElement).checked)"
+          @change="updateField('triggerOnFlapMove', ($event.target as HTMLInputElement).checked)"
         />
       </label>
 
       <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
         <div>
-          <div class="text-xs text-slate-200">Auto-Surface on Hardware Event</div>
-          <div class="text-[11px] text-slate-400">Trigger On-Event surface when the motorized flap sweeps</div>
+          <div class="text-xs text-slate-200">While Flap is Open</div>
+          <div class="text-[11px] text-slate-400">Keep active whenever flap state is OPEN</div>
         </div>
         <input
-          :checked="current.autoSurfaceOnEvent"
+          :checked="current.triggerOnFlapOpen"
           type="checkbox"
           class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
-          @change="updateField('autoSurfaceOnEvent', ($event.target as HTMLInputElement).checked)"
+          @change="updateField('triggerOnFlapOpen', ($event.target as HTMLInputElement).checked)"
         />
       </label>
+
+      <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <div>
+          <div class="text-xs text-slate-200">ESP32-S3 Link Offline</div>
+          <div class="text-[11px] text-slate-400">Alert when hardware device is disconnected</div>
+        </div>
+        <input
+          :checked="current.triggerOnDeviceDisconnect"
+          type="checkbox"
+          class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+          @change="updateField('triggerOnDeviceDisconnect', ($event.target as HTMLInputElement).checked)"
+        />
+      </label>
+
+      <!-- Weak Wi-Fi RSSI Trigger + Threshold -->
+      <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <label class="flex cursor-pointer items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200">Weak Wi-Fi Signal (RSSI)</div>
+            <div class="text-[11px] text-slate-400">Trigger when signal drops below threshold</div>
+          </div>
+          <input
+            :checked="current.triggerOnWeakWifi"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnWeakWifi', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <div v-if="current.triggerOnWeakWifi" class="mt-2 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
+          <span class="text-[11px] text-slate-400">RSSI &le; (dBm)</span>
+          <input
+            :value="current.rssiThresholdDbm"
+            type="number"
+            min="-100"
+            max="-30"
+            step="1"
+            class="w-20 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+            @change="updateNumberField('rssiThresholdDbm', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </div>
+
+      <!-- High Latency Trigger + Threshold -->
+      <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <label class="flex cursor-pointer items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200">High Frame Latency</div>
+            <div class="text-[11px] text-slate-400">Trigger when render/encode latency spikes</div>
+          </div>
+          <input
+            :checked="current.triggerOnHighLatency"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnHighLatency', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <div v-if="current.triggerOnHighLatency" class="mt-2 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
+          <span class="text-[11px] text-slate-400">Latency &ge; (ms)</span>
+          <input
+            :value="current.latencyThresholdMs"
+            type="number"
+            min="5"
+            max="2000"
+            step="5"
+            class="w-20 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+            @change="updateNumberField('latencyThresholdMs', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </div>
+
+      <!-- Low Device FPS Trigger + Threshold -->
+      <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <label class="flex cursor-pointer items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-200">Low Device FPS</div>
+            <div class="text-[11px] text-slate-400">Trigger when connected device FPS drops</div>
+          </div>
+          <input
+            :checked="current.triggerOnLowFps"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnLowFps', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <div v-if="current.triggerOnLowFps" class="mt-2 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
+          <span class="text-[11px] text-slate-400">FPS &lt;</span>
+          <input
+            :value="current.minFpsThreshold"
+            type="number"
+            min="0.2"
+            max="30"
+            step="0.1"
+            class="w-20 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+            @change="updateNumberField('minFpsThreshold', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- Accent Color Picker -->

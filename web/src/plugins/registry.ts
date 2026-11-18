@@ -64,6 +64,9 @@ export async function syncRuntimePlugins(
       const defaults = {
         ...(manifest.defaultSettings ?? manifest.default_settings ?? {}),
       }
+      const supportsOnEvent = Boolean(
+        manifest.supportsOnEvent ?? manifest.supports_on_event ?? false,
+      )
 
       const cached = compiledCache.get(id)
       if (!forceReload && cached && cached.token === reloadToken) {
@@ -71,6 +74,7 @@ export async function syncRuntimePlugins(
           ...cached.definition,
           name: manifest.name || id,
           description: manifest.description || '',
+          supportsOnEvent,
           defaultSettings: defaults,
         }
         cached.definition = updatedDef
@@ -104,6 +108,7 @@ export async function syncRuntimePlugins(
         id,
         name: manifest.name || id,
         description: manifest.description || '',
+        supportsOnEvent,
         defaultSettings: defaults,
         Widget: WidgetComp,
         Settings: SettingsComp,

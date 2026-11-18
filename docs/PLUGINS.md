@@ -31,8 +31,10 @@ plugins/
   "version": "1.0.0",
   "basePriority": 5,
   "defaultDynamicMode": "on_event",
+  "supportsOnEvent": true,
   "defaultSettings": {
     "accentColor": "#00f0ff",
+    "triggerThreshold": 30,
     "compact": false
   }
 }
@@ -41,7 +43,8 @@ plugins/
 - `id`: Unique identifier matching the folder name and slot assignments.
 - `basePriority`: Default slot priority (`1–100`) used when seeding `userPriority` (`clock` defaults to `10`, `weather` to `8`, `telemetry` to `6`). Higher priority claims earlier slots (`Slot 0`, `Slot 1`, etc.).
 - `defaultDynamicMode`: Default Dynamic Mode behavior (`"always" | "on_event" | "off"`). Defaults to `"always"` for manifest-only plugins unless specified (`"on_event"` for `weather` and `telemetry`).
-- `defaultSettings`: Seeded into `ConfigStore` (`data/config.json`) along with universal `dynamicMode` and `userPriority` fields on startup and on `POST /api/plugins/reload`, and passed to both `Widget.vue` and `Settings.vue`.
+- `supportsOnEvent`: Boolean indicating whether the plugin emits event triggers for Dynamic Mode. When omitted, defaults to `true` only if `defaultDynamicMode` is `"on_event"`, otherwise `false`. When `false` (for example `clock`), the **`On Event`** mode button is disabled/grayed out in HUD Studio and `LayoutEngine` coerces any `"on_event"` override to `"always"`.
+- `defaultSettings`: Seeded into `ConfigStore` (`data/config.json`) along with universal `dynamicMode`, `userPriority`, and any plugin-specific **On-Event Trigger Condition** fields on startup and on `POST /api/plugins/reload`, and passed to both `Widget.vue` and `Settings.vue`.
 
 ---
 
@@ -89,7 +92,7 @@ Rendered inside the HUD Studio settings drawer. Accepts `modelValue` and emits `
 
 If your plugin only displays client-side UI, omit `provider.py`—the server automatically creates a `ManifestPluginProvider` from `plugin.json`.
 
-To fetch live server data or report event triggers for Dynamic Mode, add `plugins/<plugin_id>/provider.py` subclassing `HudPluginProvider`. Providers do **not** need to compute `userPriority`, `active`, or hold cooldowns—simply report `event_triggered` and `data`, and `LayoutEngine` applies the centralized `dynamicMode` / `userPriority` / `event_hold_seconds` pipeline uniformly across all plugins:
+To fetch live server data or report event triggers for Dynamic Mode, add `plugins/<plugin_id>/provider.py` subclassing `HudPluginProvider`. Providers do **not** need to compute `userPriority`, `active`, or hold cooldowns—simply evaluate user-configured trigger settings from `settings` (exposed in `Settings.vue` and seeded via `defaultSettings`) to set `event_triggered` and `data`, and `LayoutEngine` applies the centralized `dynamicMode` / `userPriority` / `event_hold_seconds` pipeline uniformly across all plugins:
 
 ```python
 from datetime import datetime
@@ -104,17 +107,19 @@ class MyPluginProvider(HudPluginProvider):
         settings: dict[str, Any],
         now: Optional[datetime] = None,
     ) -> PluginRuntimeStatus:
-        alert_active = bool(settings.get("thresholdMet", False))
+        current_value = 42
+        threshold = int(settings.get("triggerThreshold", 30))
+        alert_active = bool(settings.get("enableAlert", True)) and current_value >= threshold
         return PluginRuntimeStatus(
             id=self.id,
             name=self.name,
             event_triggered=alert_active,
-            reason="Alert condition met" if alert_active else "Nominal",
-            data={"value": 42},
+            reason=f"Value {current_value} >= {threshold}" if alert_active else "Nominal",
+            data={"value": current_value, "alertReasons": ["Threshold"] if alert_active else []},
         )
 ```
 
-Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_dynamic_mode`, `default_settings`) is automatically populated from `plugin.json` on startup and on `POST /api/plugins/reload`.
+Metadata (`id`, `name`, `description`, `version`, `base_priority`, `default_dynamic_mode`, `supports_on_event`, `default_settings`) is automatically populated from `plugin.json` on startup and on `POST /api/plugins/reload`. Set `"supportsOnEvent": true` in `plugin.json` whenever a provider supports `"on_event"` trigger conditions.
 
 ### Custom Plugin API Routes (`get_router()`)
 
@@ -142,7 +147,7 @@ Every plugin exposes two user-configurable fields (`dynamicMode` and `userPriori
 
 - `dynamicMode`:
   - `"always"` — Always active in Dynamic Mode with effective priority `userPriority`.
-  - `"on_event"` — Active only while `provider.evaluate()` reports `event_triggered=True` **or** within `dynamic_rules.event_hold_seconds` (default `12s`) after `last_triggered_at` (including simulated triggers via `POST /api/plugins/<id>/test-event`).
+  - `"on_event"` — Selectable only when `supportsOnEvent` is `true` (disabled/grayed out in HUD Studio when `false`, and coerced to `"always"` in `LayoutEngine`). Active only while `provider.evaluate()` reports `event_triggered=True` (based on the plugin's configured On-Event Trigger Conditions) **or** within `dynamic_rules.event_hold_seconds` (default `12s`) after `last_triggered_at` (including simulated triggers via `POST /api/plugins/<id>/test-event`).
   - `"off"` — Never surfaced in Dynamic Mode.
 - `userPriority` (`1–100`) — Determines slot ordering when multiple plugins are active (higher priority claims earlier slots).
 
@@ -158,9 +163,17 @@ Layout resolution order:
 
 ## 4. Runtime Endpoints & Reference Plugins (`plugins/clock/`, `weather/`, `telemetry/`)
 
-- `GET /api/plugins` — Lists discovered plugin manifests (`id`, `name`, `description`, `version`, `basePriority`, `defaultDynamicMode`, `defaultSettings`, `hasWidget`, `hasSettings`) and current layout evaluation.
+- `GET /api/plugins` — Lists discovered plugin manifests (`id`, `name`, `description`, `version`, `basePriority`, `defaultDynamicMode`, `supportsOnEvent`, `defaultSettings`, `hasWidget`, `hasSettings`) and current layout evaluation.
 - `POST /api/plugins/reload` — Rescans `./plugins/`, imports new providers, seeds new `defaultSettings`, and notifies all connected UIs + Playwright.
 - `POST /api/plugins/<id>/test-event` — Simulates an `event_triggered` pulse for `<id>` so it holds open for `event_hold_seconds` in Dynamic Mode.
 - `GET /plugins-raw/<id>/<file>` — Serves raw `.vue`, `.ts`, `.js`, and `.json` files directly from `./plugins/<id>/` with `Cache-Control: no-store`.
 
-The built-in [`plugins/clock/`](../plugins/clock/plugin.json) package is the canonical reference plugin (alongside [`plugins/weather/`](../plugins/weather/plugin.json) and [`plugins/telemetry/`](../plugins/telemetry/plugin.json)).
+### Built-In Reference Plugins & Configurable Event Triggers
+
+- **[`plugins/clock/`](../plugins/clock/plugin.json)** (`supportsOnEvent: false`, `basePriority: 10`): Canonical display plugin supporting **`Always`** and **`Off`** modes (`On Event` is disabled in HUD Studio).
+- **[`plugins/weather/`](../plugins/weather/plugin.json)** (`supportsOnEvent: true`, `basePriority: 8`, default `"on_event"`): Configurable weather trigger conditions in `Settings.vue` / `defaultSettings`:
+  - Condition toggles: `triggerOnRain` (`true`), `triggerOnStorm` (`true`, Thunderstorm / Hail), `triggerOnSnow` (`true`), `triggerOnFog` (`false`), `triggerOnDrizzle` (`false`).
+  - Threshold triggers: `triggerOnHighWind` (`true`) with `windThresholdKmh` (`30` km/h), and `triggerOnExtremeTemp` (`false`) with `tempLowThresholdC` (`0` °C) / `tempHighThresholdC` (`35` °C).
+- **[`plugins/telemetry/`](../plugins/telemetry/plugin.json)** (`supportsOnEvent: true`, `basePriority: 6`, default `"on_event"`): Configurable hardware & link anomaly triggers in `Settings.vue` / `defaultSettings`:
+  - Hardware & flap triggers: `triggerOnFlapMove` (`true`), `triggerOnFlapOpen` (`false`), `triggerOnDeviceDisconnect` (`false`).
+  - Link & performance thresholds: `triggerOnWeakWifi` (`true`) with `rssiThresholdDbm` (`-75` dBm), `triggerOnHighLatency` (`false`) with `latencyThresholdMs` (`60` ms), and `triggerOnLowFps` (`false`) with `minFpsThreshold` (`1.5` FPS).

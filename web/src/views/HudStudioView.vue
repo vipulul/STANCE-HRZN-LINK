@@ -68,19 +68,18 @@ const selectedSlotPlugin = computed(() => getPluginById(selectedSlotPluginId.val
 const activeSettingsPlugin = computed(() => getPluginById(settingsModalPluginId.value))
 
 function getPluginDynamicMode(pluginId: string): PluginDynamicMode {
-  const fromCfg = config.plugin_configs[pluginId]?.dynamicMode
-  if (fromCfg === 'always' || fromCfg === 'on_event' || fromCfg === 'off') {
-    return fromCfg
+  const supportsOnEvent = getPluginById(pluginId)?.supportsOnEvent ?? false
+  const normalize = (val: unknown): PluginDynamicMode | null => {
+    if (val === 'always' || val === 'off') return val
+    if (val === 'on_event') return supportsOnEvent ? 'on_event' : 'always'
+    return null
   }
-  const fromStatus = layout.plugin_statuses.find((s) => s.id === pluginId)?.dynamic_mode
-  if (fromStatus === 'always' || fromStatus === 'on_event' || fromStatus === 'off') {
-    return fromStatus
-  }
-  const fromDefault = getPluginById(pluginId)?.defaultSettings?.dynamicMode
-  if (fromDefault === 'always' || fromDefault === 'on_event' || fromDefault === 'off') {
-    return fromDefault
-  }
-  return 'always'
+  return (
+    normalize(config.plugin_configs[pluginId]?.dynamicMode) ??
+    normalize(layout.plugin_statuses.find((s) => s.id === pluginId)?.dynamic_mode) ??
+    normalize(getPluginById(pluginId)?.defaultSettings?.dynamicMode) ??
+    'always'
+  )
 }
 
 function getPluginUserPriority(pluginId: string): number {
@@ -470,15 +469,23 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
                     ]"
                     :key="m.id"
                     type="button"
+                    :disabled="m.id === 'on_event' && !item.plugin.supportsOnEvent"
+                    :title="
+                      m.id === 'on_event' && !item.plugin.supportsOnEvent
+                        ? 'This plugin does not have event triggers'
+                        : undefined
+                    "
                     class="rounded px-2.5 py-1 font-semibold transition"
                     :class="
-                      item.mode === m.id
-                        ? m.id === 'always'
-                          ? 'bg-emerald-500/20 text-emerald-200'
-                          : m.id === 'on_event'
-                            ? 'bg-amber-500/20 text-amber-200'
-                            : 'bg-slate-800 text-slate-300'
-                        : 'text-slate-500 hover:text-slate-300'
+                      m.id === 'on_event' && !item.plugin.supportsOnEvent
+                        ? 'cursor-not-allowed text-slate-600 opacity-40'
+                        : item.mode === m.id
+                          ? m.id === 'always'
+                            ? 'bg-emerald-500/20 text-emerald-200'
+                            : m.id === 'on_event'
+                              ? 'bg-amber-500/20 text-amber-200'
+                              : 'bg-slate-800 text-slate-300'
+                          : 'text-slate-500 hover:text-slate-300'
                     "
                     @click="
                       updatePluginDynamicConfig(item.plugin.id, {
@@ -491,7 +498,7 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
                 </div>
 
                 <button
-                  v-if="item.mode === 'on_event'"
+                  v-if="item.plugin.supportsOnEvent && item.mode === 'on_event'"
                   type="button"
                   :disabled="saving"
                   class="rounded-md border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:opacity-50"
@@ -888,7 +895,7 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
                 Dynamic Mode &amp; Priority
               </span>
               <button
-                v-if="draftPluginSettings.dynamicMode === 'on_event'"
+                v-if="activeSettingsPlugin.supportsOnEvent && draftPluginSettings.dynamicMode === 'on_event'"
                 type="button"
                 :disabled="saving"
                 class="rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-200 transition hover:bg-amber-500/25 disabled:opacity-50"
@@ -907,11 +914,19 @@ const hourOptions = Array.from({ length: 24 }, (_, h) => ({
                 ]"
                 :key="m.id"
                 type="button"
+                :disabled="m.id === 'on_event' && !activeSettingsPlugin.supportsOnEvent"
+                :title="
+                  m.id === 'on_event' && !activeSettingsPlugin.supportsOnEvent
+                    ? 'This plugin does not have event triggers'
+                    : undefined
+                "
                 class="rounded-md border px-2 py-1.5 text-[11px] font-semibold transition"
                 :class="
-                  draftPluginSettings.dynamicMode === m.id
-                    ? 'border-cyan-400/70 bg-cyan-500/20 text-cyan-200'
-                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                  m.id === 'on_event' && !activeSettingsPlugin.supportsOnEvent
+                    ? 'cursor-not-allowed border-slate-800/60 bg-slate-950 text-slate-600 opacity-40'
+                    : draftPluginSettings.dynamicMode === m.id
+                      ? 'border-cyan-400/70 bg-cyan-500/20 text-cyan-200'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
                 "
                 @click="draftPluginSettings.dynamicMode = m.id"
               >

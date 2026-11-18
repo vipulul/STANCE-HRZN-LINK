@@ -5,6 +5,7 @@
   "version": "1.0.0",
   "basePriority": 10,
   "defaultDynamicMode": "always",
+  "supportsOnEvent": false,
   "defaultSettings": {
     "dynamicMode": "always",
     "userPriority": 10,

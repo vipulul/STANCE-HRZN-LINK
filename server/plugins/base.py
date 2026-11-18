@@ -38,6 +38,7 @@ class HudPluginProvider(ABC):
     version: str = "1.0.0"
     base_priority: int = 10
     default_dynamic_mode: PluginDynamicMode = "always"
+    supports_on_event: bool = False
     default_settings: dict[str, Any] = {}
     has_widget: bool = True
     has_settings: bool = False
@@ -75,6 +76,8 @@ class HudPluginProvider(ABC):
             "basePriority": self.base_priority,
             "base_priority": self.base_priority,
             "defaultDynamicMode": self.default_dynamic_mode,
+            "supportsOnEvent": self.supports_on_event,
+            "supports_on_event": self.supports_on_event,
             "defaultSettings": defaults,
             "default_settings": defaults,
             "hasWidget": self.has_widget,
@@ -93,6 +96,7 @@ class ManifestPluginProvider(HudPluginProvider):
         version: str = "1.0.0",
         base_priority: int = 10,
         default_dynamic_mode: PluginDynamicMode = "always",
+        supports_on_event: bool = False,
         default_settings: Optional[dict[str, Any]] = None,
         has_widget: bool = True,
         has_settings: bool = False,
@@ -104,6 +108,7 @@ class ManifestPluginProvider(HudPluginProvider):
         self.version = version
         self.base_priority = base_priority
         self.default_dynamic_mode = default_dynamic_mode
+        self.supports_on_event = supports_on_event
         self.default_settings = dict(default_settings or {})
         self.default_settings.setdefault("dynamicMode", default_dynamic_mode)
         self.default_settings.setdefault("userPriority", base_priority)

@@ -31,7 +31,10 @@ function updateField<K extends keyof WeatherSettings>(key: K, value: WeatherSett
   })
 }
 
-function updateNumberField(key: 'latitude' | 'longitude', raw: string) {
+function updateNumberField(
+  key: 'latitude' | 'longitude' | 'windThresholdKmh' | 'tempLowThresholdC' | 'tempHighThresholdC',
+  raw: string,
+) {
   const parsed = Number.parseFloat(raw)
   if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
     updateField(key, parsed)
@@ -253,16 +256,132 @@ const swatches = [
           @change="updateField('showCornerBrackets', ($event.target as HTMLInputElement).checked)"
         />
       </label>
+    </div>
 
-      <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
-        <span class="text-xs text-slate-200">Auto-Surface on Rain/Storm</span>
-        <input
-          :checked="current.alertOnSevereWeather"
-          type="checkbox"
-          class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
-          @change="updateField('alertOnSevereWeather', ($event.target as HTMLInputElement).checked)"
-        />
+    <!-- On-Event Trigger Conditions -->
+    <div class="space-y-2">
+      <label class="block font-mono text-xs uppercase tracking-wider text-amber-300">
+        On-Event Trigger Conditions
       </label>
+      <p class="text-[11px] text-slate-400">
+        Choose which weather conditions automatically surface this widget in Dynamic Mode.
+      </p>
+
+      <div class="grid grid-cols-2 gap-2">
+        <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <span class="text-xs text-slate-200">Rain &amp; Showers</span>
+          <input
+            :checked="current.triggerOnRain"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnRain', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+
+        <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <span class="text-xs text-slate-200">Storm / Hail</span>
+          <input
+            :checked="current.triggerOnStorm"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnStorm', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+
+        <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <span class="text-xs text-slate-200">Snow &amp; Ice</span>
+          <input
+            :checked="current.triggerOnSnow"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnSnow', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+
+        <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <span class="text-xs text-slate-200">Fog</span>
+          <input
+            :checked="current.triggerOnFog"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnFog', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+
+        <label class="col-span-2 flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <span class="text-xs text-slate-200">Light Drizzle</span>
+          <input
+            :checked="current.triggerOnDrizzle"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnDrizzle', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+      </div>
+
+      <!-- High Wind Trigger + Threshold -->
+      <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <label class="flex cursor-pointer items-center justify-between">
+          <span class="text-xs text-slate-200">High Wind Speed (&ge; km/h)</span>
+          <input
+            :checked="current.triggerOnHighWind"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnHighWind', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <div v-if="current.triggerOnHighWind" class="mt-2 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
+          <span class="text-[11px] text-slate-400">Wind threshold (km/h)</span>
+          <input
+            :value="current.windThresholdKmh"
+            type="number"
+            min="5"
+            max="200"
+            step="1"
+            class="w-20 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+            @change="updateNumberField('windThresholdKmh', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+      </div>
+
+      <!-- Extreme Temperature Trigger + Thresholds -->
+      <div class="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <label class="flex cursor-pointer items-center justify-between">
+          <span class="text-xs text-slate-200">Extreme Temperature (&le; Low or &ge; High °C)</span>
+          <input
+            :checked="current.triggerOnExtremeTemp"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+            @change="updateField('triggerOnExtremeTemp', ($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <div v-if="current.triggerOnExtremeTemp" class="mt-2 grid grid-cols-2 gap-2 border-t border-slate-800/80 pt-2">
+          <div>
+            <label class="mb-1 block text-[10px] text-slate-400">Freezing &le; (°C)</label>
+            <input
+              :value="current.tempLowThresholdC"
+              type="number"
+              min="-50"
+              max="30"
+              step="1"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+              @change="updateNumberField('tempLowThresholdC', ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-[10px] text-slate-400">Heat &ge; (°C)</label>
+            <input
+              :value="current.tempHighThresholdC"
+              type="number"
+              min="15"
+              max="60"
+              step="1"
+              class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-cyan-300 focus:border-cyan-400/70 focus:outline-none"
+              @change="updateNumberField('tempHighThresholdC', ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Accent Color Picker -->

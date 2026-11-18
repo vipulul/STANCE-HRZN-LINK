@@ -84,6 +84,7 @@ class WeatherPluginProvider(HudPluginProvider):
     description = "Live temperature, forecast conditions, wind, and severe weather alerts."
     base_priority = 8
     default_dynamic_mode = "on_event"
+    supports_on_event = True
     default_settings: dict[str, Any] = {
         "dynamicMode": "on_event",
         "userPriority": 8,
@@ -97,6 +98,16 @@ class WeatherPluginProvider(HudPluginProvider):
         "showWind": True,
         "showCornerBrackets": True,
         "alertOnSevereWeather": True,
+        "triggerOnRain": True,
+        "triggerOnStorm": True,
+        "triggerOnSnow": True,
+        "triggerOnFog": False,
+        "triggerOnDrizzle": False,
+        "triggerOnHighWind": True,
+        "windThresholdKmh": 30,
+        "triggerOnExtremeTemp": False,
+        "tempLowThresholdC": 0,
+        "tempHighThresholdC": 35,
     }
 
     def __init__(self) -> None:
@@ -215,18 +226,48 @@ class WeatherPluginProvider(HudPluginProvider):
         city_name = str(merged.get("cityName") or "Bucharest").strip() or "Bucharest"
         latitude = _coerce_float(merged.get("latitude"), 44.4268)
         longitude = _coerce_float(merged.get("longitude"), 26.1025)
-        alert_enabled = bool(merged.get("alertOnSevereWeather", True))
 
         weather = self._get_weather_for_coords(latitude, longitude)
         weather["city_name"] = city_name
         weather["latitude"] = latitude
         weather["longitude"] = longitude
 
-        is_severe = bool(weather.get("severe", False))
-        event_triggered = bool(alert_enabled and is_severe)
+        icon = str(weather.get("icon") or "unknown")
+        wind_kmh = weather.get("wind_kmh")
+        temp_c = weather.get("temperature_c")
+        wind_thresh = _coerce_float(merged.get("windThresholdKmh"), 30.0)
+        temp_low = _coerce_float(merged.get("tempLowThresholdC"), 0.0)
+        temp_high = _coerce_float(merged.get("tempHighThresholdC"), 35.0)
+
+        active_triggers: list[str] = []
+        if bool(merged.get("triggerOnStorm", True)) and icon == "storm":
+            active_triggers.append("Storm alert")
+        if bool(merged.get("triggerOnRain", True)) and icon == "rain":
+            active_triggers.append("Rain detected")
+        if bool(merged.get("triggerOnSnow", True)) and icon == "snow":
+            active_triggers.append("Snow detected")
+        if bool(merged.get("triggerOnFog", False)) and icon == "fog":
+            active_triggers.append("Fog detected")
+        if bool(merged.get("triggerOnDrizzle", False)) and icon == "drizzle":
+            active_triggers.append("Drizzle detected")
+        if (
+            bool(merged.get("triggerOnHighWind", True))
+            and isinstance(wind_kmh, (int, float))
+            and wind_kmh >= wind_thresh
+        ):
+            active_triggers.append(f"Wind {wind_kmh:.0f} km/h (>= {wind_thresh:.0f})")
+        if (
+            bool(merged.get("triggerOnExtremeTemp", False))
+            and isinstance(temp_c, (int, float))
+            and (temp_c <= temp_low or temp_c >= temp_high)
+        ):
+            active_triggers.append(f"Extreme temp {temp_c:.0f}°C")
+
+        event_triggered = len(active_triggers) > 0
+        weather["event_triggered"] = event_triggered
         condition = weather.get("condition") or "LIVE"
         reason = (
-            f"Severe weather alert: {condition}"
+            f"{city_name}: {', '.join(active_triggers)}"
             if event_triggered
             else f"{city_name}: {condition}"
         )

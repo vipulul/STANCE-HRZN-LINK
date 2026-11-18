@@ -1,10 +1,11 @@
 {
   "id": "telemetry",
   "name": "HUD Telemetry",
-  "description": "Live stream FPS, flap state, servo pulse, and connection diagnostics.",
+  "description": "Live stream FPS, flap state, servo pulse, and configurable link/hardware event triggers.",
   "version": "1.0.0",
   "basePriority": 6,
   "defaultDynamicMode": "on_event",
+  "supportsOnEvent": true,
   "defaultSettings": {
     "dynamicMode": "on_event",
     "userPriority": 6,
@@ -17,6 +18,15 @@
     "showLayout": false,
     "compactLabels": false,
     "autoSurfaceOnEvent": true,
-    "activeWhenFlapOpen": false
+    "activeWhenFlapOpen": false,
+    "triggerOnFlapMove": true,
+    "triggerOnFlapOpen": false,
+    "triggerOnDeviceDisconnect": false,
+    "triggerOnWeakWifi": true,
+    "rssiThresholdDbm": -75,
+    "triggerOnHighLatency": false,
+    "latencyThresholdMs": 60,
+    "triggerOnLowFps": false,
+    "minFpsThreshold": 1.5
   }
 }

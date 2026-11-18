@@ -1,10 +1,11 @@
 {
   "id": "weather",
   "name": "Weather",
-  "description": "Live temperature, forecast conditions, wind, and severe weather alerts.",
+  "description": "Live temperature, forecast conditions, wind, and configurable weather event alerts.",
   "version": "1.0.0",
   "basePriority": 8,
   "defaultDynamicMode": "on_event",
+  "supportsOnEvent": true,
   "defaultSettings": {
     "dynamicMode": "on_event",
     "userPriority": 8,
@@ -17,6 +18,16 @@
     "showHumidity": true,
     "showWind": true,
     "showCornerBrackets": true,
-    "alertOnSevereWeather": true
+    "alertOnSevereWeather": true,
+    "triggerOnRain": true,
+    "triggerOnStorm": true,
+    "triggerOnSnow": true,
+    "triggerOnFog": false,
+    "triggerOnDrizzle": false,
+    "triggerOnHighWind": true,
+    "windThresholdKmh": 30,
+    "triggerOnExtremeTemp": false,
+    "tempLowThresholdC": 0,
+    "tempHighThresholdC": 35
   }
 }

@@ -97,6 +97,8 @@ class LayoutEngine:
             dynamic_mode: PluginDynamicMode = (
                 raw_mode if raw_mode in ("always", "on_event", "off") else "always"  # type: ignore[assignment]
             )
+            if not provider.supports_on_event and dynamic_mode == "on_event":
+                dynamic_mode = "always"
             user_priority = max(
                 1,
                 min(100, _coerce_int(base_settings.get("userPriority"), provider.base_priority)),

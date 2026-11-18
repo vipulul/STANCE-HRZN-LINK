@@ -1,0 +1,25 @@
+{
+  "id": "spotify",
+  "name": "Spotify Now Playing",
+  "description": "Live Spotify track title, artist, scrub progress bar, animated equalizer, and track-change auto-surface.",
+  "version": "1.0.0",
+  "basePriority": 7,
+  "defaultDynamicMode": "on_event",
+  "supportsOnEvent": true,
+  "defaultSettings": {
+    "dynamicMode": "on_event",
+    "userPriority": 7,
+    "accentColor": "#1ed760",
+    "clientId": "",
+    "clientSecret": "",
+    "redirectUri": "http://127.0.0.1:8080/api/plugins/spotify/callback",
+    "showArtist": true,
+    "showAlbum": false,
+    "showProgressBar": true,
+    "showTimeRemaining": true,
+    "showEqualizer": true,
+    "triggerOnTrackChange": true,
+    "triggerOnPlayStart": true,
+    "triggerWhilePlaying": true
+  }
+}

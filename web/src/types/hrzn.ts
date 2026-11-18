@@ -83,6 +83,8 @@ export interface PluginManifest {
   base_priority: number
   basePriority?: number
   defaultDynamicMode?: PluginDynamicMode
+  supportsOnEvent?: boolean
+  supports_on_event?: boolean
   default_settings: Record<string, unknown>
   defaultSettings?: Record<string, unknown>
   hasWidget?: boolean

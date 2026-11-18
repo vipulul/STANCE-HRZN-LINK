@@ -102,6 +102,15 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
             raw_mode if raw_mode in ("always", "on_event", "off") else "always"  # type: ignore[assignment]
         )
 
+        raw_supports = manifest.get("supportsOnEvent", manifest.get("supports_on_event"))
+        if isinstance(raw_supports, bool):
+            supports_on_event = raw_supports
+        else:
+            supports_on_event = default_dynamic_mode == "on_event"
+
+        if not supports_on_event and default_dynamic_mode == "on_event":
+            default_dynamic_mode = "always"
+
         has_widget = (plugin_dir / "Widget.vue").is_file()
         has_settings = (plugin_dir / "Settings.vue").is_file()
 
@@ -121,6 +130,7 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
                 version=version,
                 base_priority=base_priority,
                 default_dynamic_mode=default_dynamic_mode,
+                supports_on_event=supports_on_event,
                 default_settings=default_settings,
                 has_widget=has_widget,
                 has_settings=has_settings,
@@ -133,6 +143,7 @@ def discover_plugins(plugins_dir: Optional[Path] = None) -> dict[str, HudPluginP
             provider.version = version
             provider.base_priority = base_priority
             provider.default_dynamic_mode = default_dynamic_mode
+            provider.supports_on_event = supports_on_event
             provider.has_widget = has_widget
             provider.has_settings = has_settings
             provider.folder_name = plugin_dir.name
@@ -184,6 +195,26 @@ def mount_plugin_routers(
             tags=[f"plugin:{plugin_id}"],
         )
         _MOUNTED_PLUGIN_ROUTES.extend(app.router.routes[before:])
+
+    if _MOUNTED_PLUGIN_ROUTES:
+        mounted_ids = {id(route) for route in _MOUNTED_PLUGIN_ROUTES}
+        non_plugin_routes = [
+            route for route in app.router.routes if id(route) not in mounted_ids
+        ]
+        catchall_idx = next(
+            (
+                idx
+                for idx, route in enumerate(non_plugin_routes)
+                if getattr(route, "path", None) == "/{full_path:path}"
+            ),
+            None,
+        )
+        if catchall_idx is not None:
+            app.router.routes[:] = (
+                non_plugin_routes[:catchall_idx]
+                + list(_MOUNTED_PLUGIN_ROUTES)
+                + non_plugin_routes[catchall_idx:]
+            )
 
     app.openapi_schema = None
 

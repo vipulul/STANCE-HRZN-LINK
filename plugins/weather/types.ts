@@ -22,6 +22,16 @@ export interface WeatherSettings {
   showWind: boolean
   showCornerBrackets: boolean
   alertOnSevereWeather: boolean
+  triggerOnRain: boolean
+  triggerOnStorm: boolean
+  triggerOnSnow: boolean
+  triggerOnFog: boolean
+  triggerOnDrizzle: boolean
+  triggerOnHighWind: boolean
+  windThresholdKmh: number
+  triggerOnExtremeTemp: boolean
+  tempLowThresholdC: number
+  tempHighThresholdC: number
 }
 
 export interface WeatherPluginData {
@@ -37,6 +47,7 @@ export interface WeatherPluginData {
   latitude?: number
   longitude?: number
   severe?: boolean
+  event_triggered?: boolean
   fetched_at?: string
   stale?: boolean
   error?: string | null
