@@ -93,6 +93,16 @@ const swatches = [
           @change="updateField('compactLabels', ($event.target as HTMLInputElement).checked)"
         />
       </label>
+
+      <label class="flex cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+        <span class="text-xs text-slate-200">Show Corner Brackets</span>
+        <input
+          :checked="current.showCornerBrackets"
+          type="checkbox"
+          class="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-cyan-400"
+          @change="updateField('showCornerBrackets', ($event.target as HTMLInputElement).checked)"
+        />
+      </label>
     </div>
 
     <!-- On-Event Trigger Conditions -->

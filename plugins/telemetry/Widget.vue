@@ -160,10 +160,12 @@ const compactMetrics = computed<TelemetryMetric[]>(() => enabledMetrics.value.sl
     :style="{ '--telemetry-accent': mergedSettings.accentColor }"
   >
     <!-- Tactical corner reticles (hidden in compact layouts) -->
-    <span class="reticle reticle-tl" aria-hidden="true" />
-    <span class="reticle reticle-tr" aria-hidden="true" />
-    <span class="reticle reticle-bl" aria-hidden="true" />
-    <span class="reticle reticle-br" aria-hidden="true" />
+    <template v-if="mergedSettings.showCornerBrackets">
+      <span class="reticle reticle-tl" aria-hidden="true" />
+      <span class="reticle reticle-tr" aria-hidden="true" />
+      <span class="reticle reticle-bl" aria-hidden="true" />
+      <span class="reticle reticle-br" aria-hidden="true" />
+    </template>
 
     <!-- Medium / Full Diagnostic View -->
     <div class="telemetry-full">

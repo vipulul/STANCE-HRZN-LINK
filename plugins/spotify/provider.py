@@ -295,6 +295,7 @@ class SpotifyPluginProvider(HudPluginProvider):
         "showProgressBar": True,
         "showTimeRemaining": True,
         "showEqualizer": True,
+        "showCornerBrackets": True,
         "triggerOnTrackChange": True,
         "triggerOnPlayStart": True,
         "triggerWhilePlaying": True,

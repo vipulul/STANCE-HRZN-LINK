@@ -188,10 +188,12 @@ onUnmounted(() => {
     :style="{ '--sp-accent': mergedSettings.accentColor }"
   >
     <!-- Tactical corner reticles (hidden in narrow/shallow slots via @container) -->
-    <span class="reticle reticle-tl" aria-hidden="true" />
-    <span class="reticle reticle-tr" aria-hidden="true" />
-    <span class="reticle reticle-bl" aria-hidden="true" />
-    <span class="reticle reticle-br" aria-hidden="true" />
+    <template v-if="mergedSettings.showCornerBrackets">
+      <span class="reticle reticle-tl" aria-hidden="true" />
+      <span class="reticle reticle-tr" aria-hidden="true" />
+      <span class="reticle reticle-bl" aria-hidden="true" />
+      <span class="reticle reticle-br" aria-hidden="true" />
+    </template>
 
     <!-- Medium & Full Slot Layout -->
     <div class="sp-full">

@@ -17,6 +17,7 @@
     "showLatency": true,
     "showLayout": false,
     "compactLabels": false,
+    "showCornerBrackets": true,
     "autoSurfaceOnEvent": true,
     "activeWhenFlapOpen": false,
     "triggerOnFlapMove": true,

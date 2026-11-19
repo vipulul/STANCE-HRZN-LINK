@@ -12,6 +12,7 @@ export interface SpotifySettings {
   showProgressBar: boolean
   showTimeRemaining: boolean
   showEqualizer: boolean
+  showCornerBrackets: boolean
   triggerOnTrackChange: boolean
   triggerOnPlayStart: boolean
   triggerWhilePlaying: boolean

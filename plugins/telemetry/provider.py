@@ -212,6 +212,7 @@ class TelemetryPluginProvider(HudPluginProvider):
         "showLatency": True,
         "showLayout": False,
         "compactLabels": False,
+        "showCornerBrackets": True,
         "autoSurfaceOnEvent": True,
         "activeWhenFlapOpen": False,
         "triggerOnFlapMove": True,

@@ -12,6 +12,7 @@ export interface TelemetrySettings {
   showLatency: boolean
   showLayout: boolean
   compactLabels: boolean
+  showCornerBrackets: boolean
   autoSurfaceOnEvent: boolean
   activeWhenFlapOpen: boolean
   triggerOnFlapMove: boolean

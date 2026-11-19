@@ -18,6 +18,7 @@
     "showProgressBar": true,
     "showTimeRemaining": true,
     "showEqualizer": true,
+    "showCornerBrackets": true,
     "triggerOnTrackChange": true,
     "triggerOnPlayStart": true,
     "triggerWhilePlaying": true

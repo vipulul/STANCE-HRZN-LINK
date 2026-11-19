@@ -246,6 +246,7 @@ const displayToggles: Array<{ key: keyof SpotifySettings; label: string }> = [
   { key: 'showProgressBar', label: 'Show Progress Bar' },
   { key: 'showTimeRemaining', label: 'Show Time Remaining' },
   { key: 'showEqualizer', label: 'Show Equalizer' },
+  { key: 'showCornerBrackets', label: 'Show Corner Brackets' },
 ]
 
 const swatches = [
