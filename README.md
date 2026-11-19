@@ -71,7 +71,8 @@ stance-hrzn-link/
 ├── hardware/                   # CAD STLs, wiring diagrams, and BOM (HRZN-01)
 ├── docs/
 │   ├── PLUGINS.md              # Modular HUD plugin authoring guide
-│   └── PROTOCOL.md             # WebSocket JSON & binary frame packet spec
+│   ├── PROTOCOL.md             # WebSocket JSON & binary frame packet spec
+│   └── RECOMMENDATIONS.md      # HUD plugin visual, spacing & alignment guide
 ├── Dockerfile                  # Multi-stage build (Vue dist -> Python 3.12 FastAPI)
 ├── docker-compose.yml          # Single-port 8080 service definition
 ├── ROADMAP.md                  # Future HRZN-02 hardware & Home Assistant integrations

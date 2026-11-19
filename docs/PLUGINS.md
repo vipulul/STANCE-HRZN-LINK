@@ -81,6 +81,7 @@ Style your `Widget.vue` using `<style scoped>` CSS (rather than new custom Tailw
   - `@container hud-slot (max-width: 155px)` — narrow vertical strips (`3x1`, `4x1`)
   - `@container hud-slot (max-height: 135px)` — wide shallow slots (`1x2`, compact slot in `2-big-1-small`)
 - Keep high contrast (`>= 7:1`) and avoid hover-only information in `Widget.vue`.
+- See [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md) for canonical outer padding, corner reticle offsets, header/progress-bar alignment tokens, `@container hud-slot` breakpoints, and `Settings.vue` conventions across all grid layouts.
 
 ### `Settings.vue` (Optional)
 

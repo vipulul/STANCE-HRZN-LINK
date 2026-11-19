@@ -1,0 +1,31 @@
+{
+  "id": "bambu",
+  "name": "Bambu Lab Printer",
+  "description": "Live print progress, nozzle & bed temperatures, layer count, ETA, and automatic print-start split screen.",
+  "version": "1.0.0",
+  "basePriority": 8,
+  "defaultDynamicMode": "on_event",
+  "supportsOnEvent": true,
+  "defaultSettings": {
+    "dynamicMode": "on_event",
+    "userPriority": 8,
+    "accentColor": "#00f0ff",
+    "printerIp": "",
+    "serialNumber": "",
+    "accessCode": "",
+    "printerName": "BAMBU LAB",
+    "mockMode": false,
+    "mockState": "RUNNING",
+    "showTemperatures": true,
+    "showChamberTemp": true,
+    "showSecondNozzle": true,
+    "showLayerCount": true,
+    "showRemainingTime": true,
+    "showPrintStage": true,
+    "showCornerBrackets": true,
+    "triggerOnPrintStart": true,
+    "triggerWhilePrinting": true,
+    "triggerOnPrintFinish": true,
+    "triggerOnErrorOrPause": true
+  }
+}
